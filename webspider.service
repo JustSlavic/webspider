@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/home/webspider/main
+WorkingDirectory=/home/webspider/www
 Restart=always
 
 [Install]
