@@ -1,0 +1,11 @@
+[Unit]
+Description=Web Spider server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/webspider/main
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
