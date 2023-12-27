@@ -56,6 +56,27 @@ memory_block load_file(memory_allocator allocator, char const *filename)
     return result;
 }
 
+memory_block make_http_response(memory_allocator allocator)
+{
+    memory_block payload = memory__empty_block();
+
+    memory_block file = load_file(allocator, "../www/index.html");
+    if (file.memory != NULL)
+    {
+        payload = ALLOCATE_BUFFER(allocator, file.size + 512);
+        usize payload_size = 0;
+        {
+            byte *cursor = payload.memory;
+            payload_size += sprintf((char *) cursor, payload_template, file.size);
+            memcpy(cursor + payload_size, file.memory, file.size);
+            payload_size += file.size;
+        }
+        payload.size = payload_size;
+    }
+
+    return payload;
+}
+
 int main()
 {
     usize memory_size = MEGABYTES(1);
@@ -64,21 +85,6 @@ int main()
 
     memory_block global_memory = { .memory = memory, .size = memory_size };
     memory_allocator global_arena = memory_allocator__create_arena_from_memory_block(global_memory);
-    memory_block file = load_file(global_arena, "../www/index.html");
-
-    if (file.memory == NULL)
-    {
-        return 1;
-    }
-
-    memory_block payload = ALLOCATE_BUFFER(global_arena, file.size + 512);
-    usize payload_size = 0;
-    {
-        byte *cursor = payload.memory;
-        payload_size += sprintf((char *) cursor, payload_template, file.size);
-        memcpy(cursor + payload_size, file.memory, file.size);
-        payload_size += file.size;
-    }
 
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket > -1)
@@ -106,6 +112,10 @@ int main()
                         int bytes_received = recv(accepted_socket, buffer, sizeof(buffer), 0);
                         if (bytes_received > -1)
                         {
+                            printf("Message:\n%.*s\n", bytes_received, buffer);
+
+                            memory_block payload = make_http_response(global_arena);
+
                             int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
                             if (bytes_sent > -1)
                             {
@@ -113,6 +123,8 @@ int main()
                             }
                         }
                     }
+
+                    memory_allocator__reset(global_arena);
                 }
             }
         }

@@ -4,8 +4,72 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Slava's homepage</title>
+    <style>
+        .main-header {
+            text-align: center;
+            background-color: #efefee;
+            color: #666666;
+        }
+        .block-section {
+            margin-top: 10px;
+            margin-bottom: 10px;
+            background-color: #e2e2e2;
+            border-radius: 10px;
+            border: 2px solid #73AD21;
+            border-color: #010001;
+        }
+        .section-header {
+            margin: 0;
+            padding: 10px 0 0 0;
+            text-align: center;
+        }
+        .body-text {
+            margin: 0;
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-bottom: 10px;
+            font-size: 30px;
+        }
+        .body-text:hover {
+            color: #ff0000;
+        }
+        section {
+            margin: 0 20% 0 20%;
+        }
+        @media screen and (max-width: 880px) {
+            section {
+                margin: 0 10% 0 10%;
+            }
+        }
+        @media screen and (max-width: 600px) {
+            section {
+                margin: 0;
+            }
+        }
+    </style>
+<!--     <link rel="stylesheet" type="text/css" href="style.css" />
+    <link rel="stylesheet" type="text/css" href="css/another_style.css">
+    <link rel="icon" href="images/favicon.ico"/> -->
 </head>
 <body>
-    <h1>Слава самый крутой</h1>
+    <header>
+        <h1 class="main-header">Слава самый крутой</h1>
+    </header>
+    <main>
+        <section class="block-section">
+            <h2 class="section-header">Hello world section title!</h2>
+            <p class="body-text">
+                Hello, world!
+            </p>
+        </section>
+        <section class="block-section">
+            <h2 class="section-header">Hello second section!</h2>
+            <p class="body-text">
+                Hello world again
+            </p>
+        </section>
+    </main>
+    <footer>
+    </footer>
 </body>
 </html>
