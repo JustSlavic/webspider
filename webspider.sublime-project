@@ -37,6 +37,10 @@
             "linux": {
                 "shell_cmd": "$folder/build/spear",
                 "working_dir": "$folder"
+            },
+            "osx": {
+                "shell_cmd": "$folder/build.sh run",
+                "working_dir": "$folder",
             }
         }
     ],
