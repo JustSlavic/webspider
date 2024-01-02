@@ -19,6 +19,24 @@ const char payload_template[] =
 "Content-Type: text/html\n"
 "\n";
 
+const char payload_500_template[] =
+"HTTP/1.0 500 Internal Server Error\n"
+"Content-Length: 252\n"
+"Content-Type: text/html\n"
+"\n"
+"<!DOCTYPE html>\n"
+"<html>\n"
+"<head>\n"
+"    <meta charset=\"utf-8\">\n"
+"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+"    <title>500 - Internal Server Error</title>\n"
+"</head>\n"
+"<body>\n"
+"500 - Internal Server Error\n"
+"</body>\n"
+"</html>\n"
+;
+
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
 
@@ -84,7 +102,7 @@ int main()
     memset(memory, 0, memory_size);
 
     memory_block global_memory = { .memory = memory, .size = memory_size };
-    memory_allocator global_arena = memory_allocator__create_arena_from_memory_block(global_memory);
+    memory_allocator global_arena = make_memory_arena(global_memory);
 
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket > -1)
@@ -116,20 +134,54 @@ int main()
 
                             memory_block payload = make_http_response(global_arena);
 
-                            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-                            if (bytes_sent > -1)
+                            if (payload.memory == NULL)
                             {
-                                close(accepted_socket);
+                                printf("COULD NOT LOAD PAYLOAD!!!\n\n");
+                                payload.memory = (byte *) payload_500_template;
+                                payload.size = ARRAY_COUNT(payload_500_template);
                             }
+
+                            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+                            printf("%d bytes sent:\n%.*s\n", bytes_sent, (int) payload.size, (char *) payload.memory);
+                            close(accepted_socket);
+                        }
+                        else
+                        {
+                            printf("Could not receive any bytes from connection socket %d", accepted_socket);
                         }
                     }
+                    else
+                    {
+                        printf("Could not accept connection on socket %d", server_socket);
+                    }
 
-                    memory_allocator__reset(global_arena);
+                    memory_arena__reset(global_arena);
                 }
             }
+            else
+            {
+                printf("Could not listen socket %d", server_socket);
+            }
+        }
+        else
+        {
+            printf("Could not bind socket %d to an address %d.%d.%d.%d:%d\n",
+                server_socket,
+                (address.sin_addr.s_addr      ) & 0xff,
+                (address.sin_addr.s_addr >> 8 ) & 0xff,
+                (address.sin_addr.s_addr >> 16) & 0xff,
+                (address.sin_addr.s_addr >> 24) & 0xff,
+                int16__change_endianness(address.sin_port)
+                );
+            // @todo: diagnostics (read errno)
         }
 
         close(server_socket);
+    }
+    else
+    {
+        printf("Could not create socket\n");
+        // @todo: diagnostics (read errno)
     }
 
     return 0;
