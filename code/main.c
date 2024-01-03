@@ -198,6 +198,8 @@ int main()
                                 (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 16) & 0xff,
                                 (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 24) & 0xff,
                                 uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
+                            LOG(buffer);
+                            LOG("\n");
 
                             string_builder sb =
                             {
