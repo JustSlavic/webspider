@@ -40,6 +40,8 @@ const char payload_500_template[] =
 "</html>\n"
 ;
 
+#define LOG_FILE_MAX_SIZE MEGABYTES(1)
+
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
 
@@ -122,7 +124,7 @@ void logger__flush(struct logger *logger)
         return;
     }
 
-    if (st.st_size > KILOBYTES(2))
+    if (st.st_size > LOG_FILE_MAX_SIZE)
     {
         close(fd);
 
@@ -248,7 +250,6 @@ int main()
                 int16__change_endianness(address.sin_port),
                 errno
                 );
-            // @todo: diagnostics (read errno)
         }
 
         close(server_socket);
