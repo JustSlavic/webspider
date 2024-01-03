@@ -10,7 +10,10 @@
 #include <integer.h>
 #include <memory.h>
 #include <memory_allocator.h>
+#include <string_builder.h>
 #include <string.h>
+#include <errno.h>
+#include <time.h>
 
 
 const char payload_template[] =
@@ -48,7 +51,7 @@ memory_block load_file(memory_allocator allocator, char const *filename)
 {
     memory_block result = {};
 
-    int fd = open(filename, O_NOFOLLOW, O_RDONLY);
+    int fd = open(filename, O_NOFOLLOW | O_RDONLY, 0);
     if (fd < 0)
     {
         return result;
@@ -74,42 +77,99 @@ memory_block load_file(memory_allocator allocator, char const *filename)
     return result;
 }
 
-memory_block make_http_response(memory_allocator allocator)
+memory_block make_http_response(memory_allocator allocator, string_builder *sb)
 {
-    memory_block payload = memory__empty_block();
-
     memory_block file = load_file(allocator, "../www/index.html");
     if (file.memory != NULL)
     {
-        payload = ALLOCATE_BUFFER(allocator, file.size + 512);
-        usize payload_size = 0;
-        {
-            byte *cursor = payload.memory;
-            payload_size += sprintf((char *) cursor, payload_template, file.size);
-            memcpy(cursor + payload_size, file.memory, file.size);
-            payload_size += file.size;
-        }
-        payload.size = payload_size;
+        string_builder__append_format(sb, payload_template, file.size);
+        string_builder__append_buffer(sb, file);
     }
 
-    return payload;
+    return string_builder__get_string(sb);
 }
+
+
+struct logger
+{
+    char const *filename;
+    string_builder sb;
+};
+
+#define LOG(FORMAT, ...) \
+do { \
+    time_t t = time(NULL); \
+    struct tm tm = *localtime(&t); \
+    string_builder__append_format(&logger.sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+    string_builder__append_format(&logger.sb, FORMAT VA_ARGS(__VA_ARGS__)); \
+    if (logger.sb.used > (logger.sb.memory.size - KILOBYTES(1))) \
+        logger__flush(&logger); \
+} while (0)
+
+
+void logger__flush(struct logger *logger)
+{
+    int fd = open(logger->filename, O_NOFOLLOW | O_CREAT | O_APPEND | O_RDWR, 0666);
+    if (fd < 0)
+    {
+        return;
+    }
+
+    struct stat st;
+    int fstat_result = fstat(fd, &st);
+    if (fstat_result < 0)
+    {
+        return;
+    }
+
+    if (st.st_size > KILOBYTES(2))
+    {
+        close(fd);
+
+        char new_name_buffer[512];
+        memory__set(new_name_buffer, 0, sizeof(new_name_buffer));
+        memory__copy(new_name_buffer, logger->filename, cstring__size_no0(logger->filename));
+        memory__copy(new_name_buffer + cstring__size_no0(logger->filename), ".1", 2);
+
+        rename(logger->filename, new_name_buffer);
+
+        fd = open(logger->filename, O_NOFOLLOW | O_CREAT | O_TRUNC | O_WRONLY, 0666);
+        if (fd < 0)
+        {
+            return;
+        }
+    }
+
+    memory_block string_to_write = string_builder__get_string(&logger->sb);
+    isize bytes_written = write(fd, string_to_write.memory, string_to_write.size);
+    string_builder__reset(&logger->sb);
+}
+
 
 int main()
 {
-    usize memory_size = MEGABYTES(1);
+    usize memory_size = MEGABYTES(5);
     void *memory = malloc(memory_size);
-    memset(memory, 0, memory_size);
+    memory__set(memory, 0, memory_size);
 
     memory_block global_memory = { .memory = memory, .size = memory_size };
     memory_allocator global_arena = make_memory_arena(global_memory);
+    memory_allocator connection_arena = allocate_memory_arena(global_arena, MEGABYTES(1));
+
+    struct logger logger = {
+        .filename = "log.txt",
+        .sb = {
+            .memory = ALLOCATE_BUFFER(global_arena, MEGABYTES(1)),
+            .used = 0,
+        },
+    };
 
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket > -1)
     {
         struct sockaddr_in address;
         address.sin_family = AF_INET;
-        address.sin_port   = int16__change_endianness(80);
+        address.sin_port   = uint16__change_endianness(80);
         address.sin_addr.s_addr = IP4_ANY;
         int bind_result = bind(server_socket, (const struct sockaddr *) &address, sizeof(address));
         if (bind_result > -1)
@@ -125,53 +185,68 @@ int main()
                     if (accepted_socket > -1)
                     {
                         char buffer[1024];
-                        memset(buffer, 0, sizeof(buffer));
+                        memory__set(buffer, 0, sizeof(buffer));
 
                         int bytes_received = recv(accepted_socket, buffer, sizeof(buffer), 0);
                         if (bytes_received > -1)
                         {
-                            printf("Message:\n%.*s\n", bytes_received, buffer);
+                            LOG("Received %d bytes from %d.%d.%d.%d:%d\n", bytes_received,
+                                (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr      ) & 0xff,
+                                (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 8 ) & 0xff,
+                                (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 16) & 0xff,
+                                (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 24) & 0xff,
+                                uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
 
-                            memory_block payload = make_http_response(global_arena);
+                            string_builder sb =
+                            {
+                                .memory = ALLOCATE_BUFFER(connection_arena, KILOBYTES(512)),
+                                .used = 0
+                            };
+
+                            memory_block payload = make_http_response(connection_arena, &sb);
 
                             if (payload.memory == NULL)
                             {
-                                printf("COULD NOT LOAD PAYLOAD!!!\n\n");
                                 payload.memory = (byte *) payload_500_template;
                                 payload.size = ARRAY_COUNT(payload_500_template);
+
+                                LOG("Error 500 Internal Server Error: Could not make payload, returning 500 instead!\n");
                             }
 
                             int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-                            printf("%d bytes sent:\n%.*s\n", bytes_sent, (int) payload.size, (char *) payload.memory);
-                            close(accepted_socket);
+                            LOG("Sent %d bytes\n", bytes_sent);
                         }
                         else
                         {
-                            printf("Could not receive any bytes from connection socket %d", accepted_socket);
+                            LOG("Could not receive any bytes from connection socket %d (errno: %d)\n", accepted_socket, errno);
                         }
+
+                        close(accepted_socket);
+                        logger__flush(&logger);
                     }
                     else
                     {
-                        printf("Could not accept connection on socket %d", server_socket);
+                        LOG("Could not accept connection on socket %d (errno: %d)\n", server_socket, errno);
                     }
 
-                    memory_arena__reset(global_arena);
+                    memory_arena__reset(connection_arena);
                 }
             }
             else
             {
-                printf("Could not listen socket %d", server_socket);
+                LOG("Could not listen socket %d (errno: %d)\n", server_socket, errno);
             }
         }
         else
         {
-            printf("Could not bind socket %d to an address %d.%d.%d.%d:%d\n",
+            LOG("Could not bind socket %d to an address %d.%d.%d.%d:%d (errno: %d)\n",
                 server_socket,
                 (address.sin_addr.s_addr      ) & 0xff,
                 (address.sin_addr.s_addr >> 8 ) & 0xff,
                 (address.sin_addr.s_addr >> 16) & 0xff,
                 (address.sin_addr.s_addr >> 24) & 0xff,
-                int16__change_endianness(address.sin_port)
+                int16__change_endianness(address.sin_port),
+                errno
                 );
             // @todo: diagnostics (read errno)
         }
@@ -180,12 +255,15 @@ int main()
     }
     else
     {
-        printf("Could not create socket\n");
+        LOG("Could not create socket (errno: %d)\n", errno);
         // @todo: diagnostics (read errno)
     }
+
+    logger__flush(&logger);
 
     return 0;
 }
 
 #include <memory_allocator.c>
+#include <string_builder.c>
 

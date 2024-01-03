@@ -2,8 +2,6 @@
 
 set -e
 
-echo "number of arguments: $#"
-
 mkdir -p build
 mkdir -p bin
 
