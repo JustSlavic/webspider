@@ -1,6 +1,6 @@
 [Unit]
 Description=Web Spider server
-After=network.target
+After=online.target
 
 [Service]
 Type=simple
