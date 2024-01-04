@@ -246,6 +246,16 @@ int main()
                                             printf("Successfully read %d bytes immediately!\n", bytes_received);
                                             printf("\n%.*s\n", bytes_received, buffer);
 
+                                            int bytes_sent = send(accepted_socket, payload_500, sizeof(payload_500), 0);
+                                            if (bytes_sent < 0)
+                                            {
+                                                printf("Could not send anything back\n");
+                                            }
+                                            else
+                                            {
+                                                printf("Sent back %d bytes of http\n", bytes_sent);
+                                            }
+
                                             printf("Closing incoming connection...\n");
                                             close(accepted_socket);
                                         }
