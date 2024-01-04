@@ -44,6 +44,7 @@ const char payload_500_template[] =
 
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
+#define IP4_LOCALHOST IP4(127, 0, 0, 1)
 
 
 const int32 backlog_size = 32;
@@ -99,14 +100,15 @@ struct logger
 };
 
 #define LOG(FORMAT, ...) \
-do { \
-    time_t t = time(NULL); \
-    struct tm tm = *localtime(&t); \
-    string_builder__append_format(&logger.sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-    string_builder__append_format(&logger.sb, FORMAT VA_ARGS(__VA_ARGS__)); \
-    if (logger.sb.used > (logger.sb.memory.size - KILOBYTES(1))) \
-        logger__flush(&logger); \
-} while (0)
+    printf(FORMAT VA_ARGS(__VA_ARGS__))
+// do { \
+//     time_t t = time(NULL); \
+//     struct tm tm = *localtime(&t); \
+//     string_builder__append_format(&logger.sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+//     string_builder__append_format(&logger.sb, FORMAT VA_ARGS(__VA_ARGS__)); \
+//     if (logger.sb.used > (logger.sb.memory.size - KILOBYTES(1))) \
+//         logger__flush(&logger); \
+// } while (0)
 
 
 void logger__flush(struct logger *logger)
@@ -201,7 +203,7 @@ int main()
                                 uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
                             if (bytes_received > 0)
                             {
-                                LOG("\n%s\n", buffer);
+                                LOG("\n%.*s\n", (int) buffer.size, buffer.memory);
                             }
 
                             string_builder sb =

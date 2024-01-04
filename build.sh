@@ -11,9 +11,17 @@ else
     command="$1"
 fi
 
+os_name=$(uname -s)
 
 function build() {
-    gcc code/main.c -o bin/webspider -I code/based
+    case $os_name in
+        Darwin)
+            gcc code/main_macos.c -o bin/webspider -I code/based -Wall
+            ;;
+        *)
+            echo "Unrecognazied os name ($os_name)"
+            ;;
+    esac
 }
 
 function run() {
