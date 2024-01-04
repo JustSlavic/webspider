@@ -181,15 +181,16 @@ int main()
             {
                 while(true)
                 {
+                    memory_arena__reset(connection_arena);
+
                     struct sockaddr accepted_address;
                     socklen_t accepted_address_size = sizeof(accepted_address);
                     int accepted_socket = accept(server_socket, &accepted_address, &accepted_address_size);
                     if (accepted_socket > -1)
                     {
-                        char buffer[1024];
-                        memory__set(buffer, 0, sizeof(buffer));
+                        memory_block buffer = ALLOCATE_BUFFER(connection_arena, KILOBYTES(32));
 
-                        int bytes_received = recv(accepted_socket, buffer, sizeof(buffer), 0);
+                        int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
                         if (bytes_received > -1)
                         {
                             LOG("Received %d bytes from %d.%d.%d.%d:%d\n", bytes_received,
@@ -198,8 +199,10 @@ int main()
                                 (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 16) & 0xff,
                                 (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 24) & 0xff,
                                 uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
-                            LOG(buffer);
-                            LOG("\n");
+                            if (bytes_received > 0)
+                            {
+                                LOG("\n%s\n", buffer);
+                            }
 
                             string_builder sb =
                             {
@@ -232,8 +235,6 @@ int main()
                     {
                         LOG("Could not accept connection on socket %d (errno: %d)\n", server_socket, errno);
                     }
-
-                    memory_arena__reset(connection_arena);
                 }
             }
             else

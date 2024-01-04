@@ -1,4 +1,12 @@
+# Build directories
 bin/
 build/
 
+# Sublime Text
 *.sublime-workspace
+
+# Logs
+*log.txt*
+
+# Apple bs
+*.DS_Store
