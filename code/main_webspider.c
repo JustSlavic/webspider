@@ -22,6 +22,7 @@
 
 // Project-specific
 #include "async_queue.h"
+#include "logger.h"
 
 
 const char payload_template[] =
@@ -55,98 +56,6 @@ const char payload_500[] =
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
 #define IP4_LOCALHOST IP4(127, 0, 0, 1)
-
-struct logger
-{
-    char const *filename;
-    string_builder sb;
-};
-
-void logger__flush(struct logger *logger);
-
-#if DEBUG
-#define LOG(LOGGER, FORMAT, ...) \
-    do { \
-        UNUSED(LOGGER); \
-        time_t t = time(NULL); \
-        struct tm tm = *localtime(&t); \
-        printf("[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-        printf(FORMAT VA_ARGS(__VA_ARGS__)); \
-    } while (0)
-#define LOG_UNTRUSTED(LOGGER, BUFFER, SIZE) \
-    do { \
-        UNUSED(LOGGER); \
-        time_t t = time(NULL); \
-        struct tm tm = *localtime(&t); \
-        printf("[%d-%02d-%02d %02d:%02d:%02d]\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-        for (int i = 0; i < (SIZE); i++) \
-        { \
-            char c = (BUFFER)[i]; \
-            if ((('0' <= c) && (c <= '9')) || \
-                (('a' <= c) && (c <= 'z')) || \
-                (('A' <= c) && (c <= 'Z')) || \
-                 (c == '.') || (c == ',')  || \
-                 (c == ':') || (c == ';')  || \
-                 (c == '!') || (c == '?')  || \
-                 (c == '@') || (c == '#')  || \
-                 (c == '$') || (c == '%')  || \
-                 (c == '^') || (c == '&')  || \
-                 (c == '*') || (c == '~')  || \
-                 (c == '(') || (c == ')')  || \
-                 (c == '<') || (c == '>')  || \
-                 (c == '[') || (c == ']')  || \
-                 (c == '{') || (c == '}')  || \
-                 (c == '-') || (c == '+')  || \
-                 (c == '/') || (c == '\\') || \
-                 (c == '"') || (c == '\'') || \
-                 (c == '`') || (c == '=')  || \
-                 (c == ' ') || (c == '\n') || \
-                 (c == '\r')|| (c == '\t'))   \
-            { printf("%c", c); } else { printf("\\0x%x", c); } \
-        } \
-    } while (0)
-#else
-#define LOG(LOGGER, FORMAT, ...) \
-    do { \
-        time_t t = time(NULL); \
-        struct tm tm = *localtime(&t); \
-        string_builder__append_format(&(LOGGER)->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-        string_builder__append_format(&(LOGGER)->sb, FORMAT VA_ARGS(__VA_ARGS__)); \
-        if ((LOGGER)->sb.used > ((LOGGER)->sb.memory.size - KILOBYTES(1))) logger__flush(LOGGER); \
-    } while (0)
-#define LOG_UNTRUSTED(LOGGER, BUFFER, SIZE) \
-    do { \
-        time_t t = time(NULL); \
-        struct tm tm = *localtime(&t); \
-        string_builder__append_format(&(LOGGER)->sb, "[%d-%02d-%02d %02d:%02d:%02d]\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-        for (int i = 0; i < (SIZE); i++) \
-        { \
-            char c = (BUFFER)[i]; \
-            if ((('0' <= c) && (c <= '9')) || \
-                (('a' <= c) && (c <= 'z')) || \
-                (('A' <= c) && (c <= 'Z')) || \
-                 (c == '.') || (c == ',')  || \
-                 (c == ':') || (c == ';')  || \
-                 (c == '!') || (c == '?')  || \
-                 (c == '@') || (c == '#')  || \
-                 (c == '$') || (c == '%')  || \
-                 (c == '^') || (c == '&')  || \
-                 (c == '*') || (c == '~')  || \
-                 (c == '(') || (c == ')')  || \
-                 (c == '<') || (c == '>')  || \
-                 (c == '[') || (c == ']')  || \
-                 (c == '{') || (c == '}')  || \
-                 (c == '-') || (c == '+')  || \
-                 (c == '/') || (c == '\\') || \
-                 (c == '"') || (c == '\'') || \
-                 (c == '`') || (c == '=')  || \
-                 (c == ' ') || (c == '\n') || \
-                 (c == '\r')|| (c == '\t'))   \
-            { string_builder__append_format(&(LOGGER)->sb, "%c", c); } else { string_builder__append_format(&(LOGGER)->sb, "\\0x%x", c); } \
-        } \
-        if ((LOGGER)->sb.used > ((LOGGER)->sb.memory.size - KILOBYTES(1))) logger__flush(LOGGER); \
-    } while (0)
-#endif
 
 
 memory_block load_file(memory_allocator allocator, char const *filename);
@@ -462,47 +371,6 @@ int send_payload(memory_allocator arena, struct logger *logger, int accepted_soc
     return result;
 }
 
-void logger__flush(struct logger *logger)
-{
-    int fd = open(logger->filename, O_NOFOLLOW | O_CREAT | O_APPEND | O_RDWR, 0666);
-    if (fd < 0)
-    {
-        return;
-    }
-
-    struct stat st;
-    int fstat_result = fstat(fd, &st);
-    if (fstat_result < 0)
-    {
-        return;
-    }
-
-    if (st.st_size > LOG_FILE_MAX_SIZE)
-    {
-        close(fd);
-
-        char new_name_buffer[512];
-        memory__set(new_name_buffer, 0, sizeof(new_name_buffer));
-        memory__copy(new_name_buffer, logger->filename, cstring__size_no0(logger->filename));
-        memory__copy(new_name_buffer + cstring__size_no0(logger->filename), ".1", 2);
-
-        rename(logger->filename, new_name_buffer);
-
-        fd = open(logger->filename, O_NOFOLLOW | O_CREAT | O_TRUNC | O_WRONLY, 0666);
-        if (fd < 0)
-        {
-            return;
-        }
-    }
-
-    memory_block string_to_write = string_builder__get_string(&logger->sb);
-    isize bytes_written = write(fd, string_to_write.memory, string_to_write.size);
-    if (bytes_written < 0)
-    {
-        printf("Error write logger file (errno: %d - \"%s\")\n", errno, strerror(errno));
-    }
-    string_builder__reset(&logger->sb);
-}
 
 memory_block make_http_response(memory_allocator allocator, string_builder *sb)
 {
@@ -519,6 +387,7 @@ memory_block make_http_response(memory_allocator allocator, string_builder *sb)
 
 #include <memory_allocator.c>
 #include <string_builder.c>
+#include "logger.c"
 
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.c"
