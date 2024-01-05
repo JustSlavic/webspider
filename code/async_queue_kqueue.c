@@ -22,6 +22,7 @@ struct async_context *create_async_context()
 void destroy_async_context(struct async_context *context)
 {
     close(context->queue_fd);
+    free(context);
 }
 
 int register_socket_to_read(struct async_context *context, int socket_to_register, enum socket_event_type type)

@@ -1,18 +1,28 @@
 #include "async_queue.h"
 
+#include <sys/epoll.h>
 
-struct async_context;
+
+struct async_context
 {
     int queue_fd;
     struct socket_event_data registered_events[MAX_EVENTS];
 };
 
 
-int create_async_context(struct async_context *context)
+struct async_context *create_async_context()
 {
+    struct async_context *context = malloc(sizeof(struct async_context));
     memory__set(context, 0, sizeof(struct async_context));
-    int result = context->queue_fd = epoll_create1(0);
-    return result;
+    context->queue_fd = epoll_create1(0);
+    return context;
+}
+
+
+void destroy_async_context(struct async_context *context)
+{
+    close(context->queue_fd);
+    free(context);
 }
 
 
@@ -52,7 +62,7 @@ struct socket_event_data *wait_for_new_events(struct async_context *context)
     struct socket_event_data *result = NULL;
 
     struct epoll_event incoming_event;
-    int event_count = epoll_wait(epollfd, &incoming_event, 1, -1);
+    int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, -1);
     if (event_count < 0)
     {
         printf("Error epoll_wait (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -61,7 +71,7 @@ struct socket_event_data *wait_for_new_events(struct async_context *context)
     {
         for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
         {
-            if (context->registered_events[i].socket_fd == event->data.fd)
+            if (context->registered_events[i].socket_fd == incoming_event.data.fd)
             {
                 result = context->registered_events + i;
                 break;
