@@ -24,6 +24,12 @@
 #include "async_queue.h"
 
 
+const char payload_template[] =
+"HTTP/1.0 200 OK\n"
+"Content-Length: %lld\n"
+"Content-Type: text/html\n"
+"\n";
+
 const char payload_500[] =
 "HTTP/1.0 500 Internal Server Error\n"
 "Content-Length: 237\n"
@@ -147,7 +153,8 @@ memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
 int accept_connection(struct async_context *context, memory_allocator arena, struct logger *logger, int server_socket);
 int accepted_socket_ready_to_read(struct async_context *context, memory_allocator arena, struct logger *logger, int accepted_socket);
-int send_payload(struct logger *logger, int accepted_socket);
+int send_payload(memory_allocator arena, struct logger *logger, int accepted_socket);
+memory_block make_http_response(memory_allocator allocator, string_builder *sb);
 
 
 
@@ -383,7 +390,7 @@ int accept_connection(struct async_context *context, memory_allocator arena, str
                 LOG(logger, "Successfully read %d bytes immediately!\n", bytes_received);
                 LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-                send_payload(logger, accepted_socket);
+                send_payload(arena, logger, accepted_socket);
 
                 LOG(logger, "Closing incoming connection...\n");
                 close(accepted_socket);
@@ -423,7 +430,7 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
         LOG(logger, "Successfully read %d bytes after the event!\n", bytes_received);
         LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-        send_payload(logger, accepted_socket);
+        send_payload(arena, logger, accepted_socket);
     }
 
     LOG(logger, "Closing incoming connection...\n");
@@ -432,11 +439,16 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
     return result;
 }
 
-int send_payload(struct logger *logger, int accepted_socket)
+int send_payload(memory_allocator arena, struct logger *logger, int accepted_socket)
 {
     int result = 0;
+    string_builder sb = {
+        .memory = ALLOCATE_BUFFER(arena, KILOBYTES(512)),
+        .used = 0
+    };
+    memory_block payload = make_http_response(arena, &sb);
 
-    int bytes_sent = send(accepted_socket, payload_500, sizeof(payload_500), 0);
+    int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
     if (bytes_sent < 0)
     {
         LOG(logger, "Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -490,6 +502,18 @@ void logger__flush(struct logger *logger)
         printf("Error write logger file (errno: %d - \"%s\")\n", errno, strerror(errno));
     }
     string_builder__reset(&logger->sb);
+}
+
+memory_block make_http_response(memory_allocator allocator, string_builder *sb)
+{
+    memory_block file = load_file(allocator, "../www/index.html");
+    if (file.memory != NULL)
+    {
+        string_builder__append_format(sb, payload_template, file.size);
+        string_builder__append_buffer(sb, file);
+    }
+
+    return string_builder__get_string(sb);
 }
 
 
