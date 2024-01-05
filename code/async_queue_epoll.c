@@ -63,15 +63,15 @@ struct socket_event_data *wait_for_new_events(struct async_context *context)
 
     printf("\nwaiting for new events...");
     printf("available events: [(%d: %s)", context->registered_events[0].socket_fd,
-                                          context->registered_events[0].type == SOCKET_EVENT__NONE ? "none" :
-                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_CONNECTION ? "incoming_connection" :
-                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_MESSAGE ? "incoming_message" : "error");
+                                          context->registered_events[0].type == SOCKET_EVENT__NONE ? "-" :
+                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_CONNECTION ? "CON" :
+                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_MESSAGE ? "MSG" : "ERROR");
     for (int i = 1; i < ARRAY_COUNT(context->registered_events); i++)
     {
         printf(", (%d: %s)", context->registered_events[i].socket_fd,
-                             context->registered_events[i].type == SOCKET_EVENT__NONE ? "none" :
-                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_CONNECTION ? "incoming_connection" :
-                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_MESSAGE ? "incoming_message" : "error");
+                             context->registered_events[i].type == SOCKET_EVENT__NONE ? "-" :
+                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_CONNECTION ? "CON" :
+                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_MESSAGE ? "MSG" : "ERROR");
 
     }
     printf("]\n");
