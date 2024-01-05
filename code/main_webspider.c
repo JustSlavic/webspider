@@ -21,6 +21,7 @@
 #include <time.h>
 
 // Project-specific
+#include "webspider.h"
 #include "async_queue.h"
 #include "logger.h"
 
@@ -60,9 +61,9 @@ const char payload_500[] =
 
 memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
-int accept_connection(struct async_context *context, memory_allocator arena, struct logger *logger, int server_socket);
-int accepted_socket_ready_to_read(struct async_context *context, memory_allocator arena, struct logger *logger, int accepted_socket);
-int send_payload(memory_allocator arena, struct logger *logger, int accepted_socket);
+int accept_connection(struct webspider *server, int socket_fd);
+int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket);
+int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(memory_allocator allocator, string_builder *sb);
 
 
@@ -72,38 +73,44 @@ int main()
     usize memory_size = MEGABYTES(5);
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
-
     memory_block global_memory = { .memory = memory, .size = memory_size };
-    memory_allocator global_arena = make_memory_arena(global_memory);
-    memory_allocator connection_arena = allocate_memory_arena(global_arena, MEGABYTES(1));
 
-    struct logger logger = {
-        .filename = "log.txt",
-        .sb = {
-            .memory = ALLOCATE_BUFFER(global_arena, MEGABYTES(1)),
-            .used = 0,
+    struct webspider server = {
+        .socket_fd = 0,
+        .async = NULL,
+
+        .webspider_allocator = make_memory_arena(global_memory),
+        .connection_allocator = allocate_memory_arena(server.webspider_allocator, MEGABYTES(1)),
+
+        .logger = {
+            .filename = "log.txt",
+            .sb = {
+                .memory = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1)),
+                .used = 0,
+            },
         },
     };
+    struct logger *logger = &server.logger;
 
-    struct async_context *context = create_async_context();
-    if (context == NULL)
+    server.async = create_async_context();
+    if (server.async == NULL)
     {
-        LOG(&logger, "Error async queue\n");
+        LOG(logger, "Error async queue\n");
         return EXIT_FAILURE;
     }
 
-    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0)
+    server.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server.socket_fd < 0)
     {
-        LOG(&logger, "Error socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG(logger, "Error socket (errno: %d - \"%s\")\n", errno, strerror(errno));
         return EXIT_FAILURE;
     }
     else
     {
-        int nonblock_result = make_socket_nonblocking(server_socket);
+        int nonblock_result = make_socket_nonblocking(server.socket_fd);
         if (nonblock_result < 0)
         {
-            LOG(&logger, "Error: make_socket_nonblocking\n");
+            LOG(logger, "Error: make_socket_nonblocking\n");
         }
         else
         {
@@ -113,55 +120,55 @@ int main()
                 .sin_addr.s_addr = IP4_ANY,
             };
 
-            int bind_result = bind(server_socket, (const struct sockaddr *) &address, sizeof(address));
+            int bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
             if (bind_result < 0)
             {
-                LOG(&logger, "Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
+                LOG(logger, "Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
             }
             else
             {
-                int listen_result = listen(server_socket, BACKLOG_SIZE);
+                int listen_result = listen(server.socket_fd, BACKLOG_SIZE);
                 if (listen_result < 0)
                 {
-                    LOG(&logger, "Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    LOG(logger, "Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
                 }
                 else
                 {
-                    int register_result = register_socket_to_read(context, server_socket, SOCKET_EVENT__INCOMING_CONNECTION);
+                    int register_result = register_socket_to_read(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
-                            LOG(&logger, "Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            LOG(logger, "Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
                         if (register_result == -1)
-                            LOG(&logger, "Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            LOG(logger, "Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
                     }
                     else
                     {
                         while(true)
                         {
-                            struct socket_event_data *event = wait_for_new_events(context);
+                            struct socket_event_data *event = wait_for_new_events(server.async);
                             if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
                             {
-                                LOG(&logger, "Incoming connection event...\n");
-                                int accept_connection_result = accept_connection(context, connection_arena, &logger, server_socket);
+                                LOG(logger, "Incoming connection event...\n");
+                                int accept_connection_result = accept_connection(&server, server.socket_fd);
                                 if (accept_connection_result < 0)
                                 {
-                                    LOG(&logger, "Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    LOG(logger, "Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
                                 }
                             }
                             else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
                             {
-                                memory_arena__reset(connection_arena);
+                                memory_arena__reset(server.connection_allocator);
 
-                                LOG(&logger, "Incoming message event (socket %d)...\n", event->socket_fd);
-                                int accept_read_result = accepted_socket_ready_to_read(context, connection_arena, &logger, event->socket_fd);
+                                LOG(logger, "Incoming message event (socket %d)...\n", event->socket_fd);
+                                int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
                                 if (accept_read_result < 0)
                                 {
-                                    LOG(&logger, "Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    LOG(logger, "Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
                                 }
 
                                 memory__set(event, 0, sizeof(struct socket_event_data));
-                                logger__flush(&logger);
+                                logger__flush(&server.logger);
                             }
                         }
                     }
@@ -169,10 +176,10 @@ int main()
             }
         }
 
-        close(server_socket);
+        close(server.socket_fd);
     }
 
-    destroy_async_context(context);
+    destroy_async_context(server.async);
     return 0;
 }
 
@@ -229,14 +236,15 @@ int make_socket_nonblocking(int fd)
     return result;
 }
 
-int accept_connection(struct async_context *context, memory_allocator arena, struct logger *logger, int server_socket)
+int accept_connection(struct webspider *server, int socket_fd)
 {
     int result = 0;
+    struct logger *logger = &server->logger;
 
     struct sockaddr accepted_address;
     socklen_t accepted_address_size = sizeof(accepted_address);
 
-    int accepted_socket = accept(server_socket, &accepted_address, &accepted_address_size);
+    int accepted_socket = accept(socket_fd, &accepted_address, &accepted_address_size);
     if (accepted_socket < 0)
     {
         LOG(logger, "Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -260,7 +268,7 @@ int accept_connection(struct async_context *context, memory_allocator arena, str
         }
         else
         {
-            memory_block buffer = ALLOCATE_BUFFER(arena, KILOBYTES(16));
+            memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
 
             int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
             if (bytes_received < 0)
@@ -271,7 +279,7 @@ int accept_connection(struct async_context *context, memory_allocator arena, str
                 {
                     LOG(logger, "errno=EAGAIN or EWOULDBLOCK... adding to the kqueue\n");
 
-                    int register_result = register_socket_to_read(context, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
+                    int register_result = register_socket_to_read(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -299,7 +307,7 @@ int accept_connection(struct async_context *context, memory_allocator arena, str
                 LOG(logger, "Successfully read %d bytes immediately!\n", bytes_received);
                 LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-                send_payload(arena, logger, accepted_socket);
+                send_payload(server, accepted_socket);
 
                 LOG(logger, "Closing incoming connection...\n");
                 close(accepted_socket);
@@ -310,11 +318,12 @@ int accept_connection(struct async_context *context, memory_allocator arena, str
     return result;
 }
 
-int accepted_socket_ready_to_read(struct async_context *context, memory_allocator arena, struct logger *logger, int accepted_socket)
+int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
 {
     int result = 0;
+    struct logger *logger = &server->logger;
 
-    memory_block buffer = ALLOCATE_BUFFER(arena, KILOBYTES(16));
+    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
 
     int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
     if (bytes_received < 0)
@@ -339,7 +348,7 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
         LOG(logger, "Successfully read %d bytes after the event!\n", bytes_received);
         LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-        send_payload(arena, logger, accepted_socket);
+        send_payload(server, accepted_socket);
     }
 
     LOG(logger, "Closing incoming connection...\n");
@@ -348,14 +357,16 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
     return result;
 }
 
-int send_payload(memory_allocator arena, struct logger *logger, int accepted_socket)
+int send_payload(struct webspider *server, int accepted_socket)
 {
     int result = 0;
+    struct logger *logger = &server->logger;
+
     string_builder sb = {
-        .memory = ALLOCATE_BUFFER(arena, KILOBYTES(512)),
+        .memory = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(512)),
         .used = 0
     };
-    memory_block payload = make_http_response(arena, &sb);
+    memory_block payload = make_http_response(server->connection_allocator, &sb);
 
     int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
     if (bytes_sent < 0)
