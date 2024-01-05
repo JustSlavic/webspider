@@ -58,6 +58,7 @@ struct logger
 
 void logger__flush(struct logger *logger);
 
+#if DEBUG
 #define LOG(LOGGER, FORMAT, ...) \
     do { \
         UNUSED(LOGGER); \
@@ -66,16 +67,12 @@ void logger__flush(struct logger *logger);
         printf("[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
         printf(FORMAT VA_ARGS(__VA_ARGS__)); \
     } while (0)
-//     string_builder__append_format(&logger.sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
-//     string_builder__append_format(&logger.sb, FORMAT VA_ARGS(__VA_ARGS__)); \
-//     if (logger.sb.used > (logger.sb.memory.size - KILOBYTES(1))) \
-//         logger__flush(&logger);
 #define LOG_UNTRUSTED(LOGGER, BUFFER, SIZE) \
     do { \
         UNUSED(LOGGER); \
         time_t t = time(NULL); \
         struct tm tm = *localtime(&t); \
-        printf("[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+        printf("[%d-%02d-%02d %02d:%02d:%02d]\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
         for (int i = 0; i < (SIZE); i++) \
         { \
             char c = (BUFFER)[i]; \
@@ -96,18 +93,61 @@ void logger__flush(struct logger *logger);
                  (c == '-') || (c == '+')  || \
                  (c == '/') || (c == '\\') || \
                  (c == '"') || (c == '\'') || \
-                 (c == '`') || (c == '='))    \
+                 (c == '`') || (c == '=')  || \
+                 (c == ' ') || (c == '\n') || \
+                 (c == '\r')|| (c == '\t'))   \
             { printf("%c", c); } else { printf("\\0x%x", c); } \
         } \
     } while (0)
-
+#else
+#define LOG(LOGGER, FORMAT, ...) \
+    do { \
+        time_t t = time(NULL); \
+        struct tm tm = *localtime(&t); \
+        string_builder__append_format(&(LOGGER)->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+        string_builder__append_format(&(LOGGER)->sb, FORMAT VA_ARGS(__VA_ARGS__)); \
+        if ((LOGGER)->sb.used > ((LOGGER)->sb.memory.size - KILOBYTES(1))) logger__flush(LOGGER); \
+    } while (0)
+#define LOG_UNTRUSTED(LOGGER, BUFFER, SIZE) \
+    do { \
+        time_t t = time(NULL); \
+        struct tm tm = *localtime(&t); \
+        string_builder__append_format(&(LOGGER)->sb, "[%d-%02d-%02d %02d:%02d:%02d]\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+        for (int i = 0; i < (SIZE); i++) \
+        { \
+            char c = (BUFFER)[i]; \
+            if ((('0' <= c) && (c <= '9')) || \
+                (('a' <= c) && (c <= 'z')) || \
+                (('A' <= c) && (c <= 'Z')) || \
+                 (c == '.') || (c == ',')  || \
+                 (c == ':') || (c == ';')  || \
+                 (c == '!') || (c == '?')  || \
+                 (c == '@') || (c == '#')  || \
+                 (c == '$') || (c == '%')  || \
+                 (c == '^') || (c == '&')  || \
+                 (c == '*') || (c == '~')  || \
+                 (c == '(') || (c == ')')  || \
+                 (c == '<') || (c == '>')  || \
+                 (c == '[') || (c == ']')  || \
+                 (c == '{') || (c == '}')  || \
+                 (c == '-') || (c == '+')  || \
+                 (c == '/') || (c == '\\') || \
+                 (c == '"') || (c == '\'') || \
+                 (c == '`') || (c == '=')  || \
+                 (c == ' ') || (c == '\n') || \
+                 (c == '\r')|| (c == '\t'))   \
+            { string_builder__append_format(&(LOGGER)->sb, "%c", c); } else { string_builder__append_format(&(LOGGER)->sb, "\\0x%x", c); } \
+        } \
+        if ((LOGGER)->sb.used > ((LOGGER)->sb.memory.size - KILOBYTES(1))) logger__flush(LOGGER); \
+    } while (0)
+#endif
 
 
 memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
-int accept_connection(struct async_context *context, struct logger *logger, int server_socket);
-int accepted_socket_ready_to_read(struct async_context *context, memory_allocator allocator, struct logger *logger, int accepted_socket);
-int send_payload(int accepted_socket);
+int accept_connection(struct async_context *context, memory_allocator arena, struct logger *logger, int server_socket);
+int accepted_socket_ready_to_read(struct async_context *context, memory_allocator arena, struct logger *logger, int accepted_socket);
+int send_payload(struct logger *logger, int accepted_socket);
 
 
 
@@ -187,7 +227,7 @@ int main()
                             if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
                             {
                                 LOG(&logger, "Incoming connection event...\n");
-                                int accept_connection_result = accept_connection(context, &logger, server_socket);
+                                int accept_connection_result = accept_connection(context, connection_arena, &logger, server_socket);
                                 if (accept_connection_result < 0)
                                 {
                                     LOG(&logger, "Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -205,6 +245,7 @@ int main()
                                 }
 
                                 memory__set(event, 0, sizeof(struct socket_event_data));
+                                logger__flush(&logger);
                             }
                         }
                     }
@@ -272,7 +313,7 @@ int make_socket_nonblocking(int fd)
     return result;
 }
 
-int accept_connection(struct async_context *context, struct logger *logger, int server_socket)
+int accept_connection(struct async_context *context, memory_allocator arena, struct logger *logger, int server_socket)
 {
     int result = 0;
 
@@ -303,10 +344,9 @@ int accept_connection(struct async_context *context, struct logger *logger, int 
         }
         else
         {
-            char buffer[1024];
-            memory__set(buffer, 0, sizeof(buffer));
+            memory_block buffer = ALLOCATE_BUFFER(arena, KILOBYTES(16));
 
-            int bytes_received = recv(accepted_socket, buffer, sizeof(buffer) - 1, 0);
+            int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
             if (bytes_received < 0)
             {
                 LOG(logger, "recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -341,9 +381,9 @@ int accept_connection(struct async_context *context, struct logger *logger, int 
             else
             {
                 LOG(logger, "Successfully read %d bytes immediately!\n", bytes_received);
-                LOG_UNTRUSTED(logger, buffer, bytes_received);
+                LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-                send_payload(accepted_socket);
+                send_payload(logger, accepted_socket);
 
                 LOG(logger, "Closing incoming connection...\n");
                 close(accepted_socket);
@@ -354,14 +394,13 @@ int accept_connection(struct async_context *context, struct logger *logger, int 
     return result;
 }
 
-int accepted_socket_ready_to_read(struct async_context *context, memory_allocator allocator, struct logger *logger, int accepted_socket)
+int accepted_socket_ready_to_read(struct async_context *context, memory_allocator arena, struct logger *logger, int accepted_socket)
 {
     int result = 0;
 
-    char buffer[1024];
-    memory__set(buffer, 0, sizeof(buffer));
+    memory_block buffer = ALLOCATE_BUFFER(arena, KILOBYTES(16));
 
-    int bytes_received = recv(accepted_socket, buffer, sizeof(buffer) - 1, 0);
+    int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
     if (bytes_received < 0)
     {
         LOG(logger, "recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
@@ -382,10 +421,9 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
     else
     {
         LOG(logger, "Successfully read %d bytes after the event!\n", bytes_received);
-        LOG(logger, "\n%.*s\n", bytes_received, buffer);
-        LOG(logger, "Not gonna read anymore anyway\n");
+        LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
 
-        send_payload(accepted_socket);
+        send_payload(logger, accepted_socket);
     }
 
     LOG(logger, "Closing incoming connection...\n");
@@ -394,19 +432,19 @@ int accepted_socket_ready_to_read(struct async_context *context, memory_allocato
     return result;
 }
 
-int send_payload(int accepted_socket)
+int send_payload(struct logger *logger, int accepted_socket)
 {
     int result = 0;
 
     int bytes_sent = send(accepted_socket, payload_500, sizeof(payload_500), 0);
     if (bytes_sent < 0)
     {
-        printf("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG(logger, "Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
         result = -1;
     }
     else
     {
-        printf("Sent back %d bytes of http\n", bytes_sent);
+        LOG(logger, "Sent back %d bytes of http\n", bytes_sent);
     }
 
     return result;
