@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <time.h>
 
 // Project-specific
 #include "webspider.h"
@@ -95,14 +94,14 @@ int main()
     server.async = create_async_context();
     if (server.async == NULL)
     {
-        LOG(logger, "Error async queue\n");
+        LOG("Error async queue\n");
         return EXIT_FAILURE;
     }
 
     server.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server.socket_fd < 0)
     {
-        LOG(logger, "Error socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG("Error socket (errno: %d - \"%s\")\n", errno, strerror(errno));
         return EXIT_FAILURE;
     }
     else
@@ -110,7 +109,7 @@ int main()
         int nonblock_result = make_socket_nonblocking(server.socket_fd);
         if (nonblock_result < 0)
         {
-            LOG(logger, "Error: make_socket_nonblocking\n");
+            LOG("Error: make_socket_nonblocking\n");
         }
         else
         {
@@ -123,14 +122,14 @@ int main()
             int bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
             if (bind_result < 0)
             {
-                LOG(logger, "Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
+                LOG("Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
             }
             else
             {
                 int listen_result = listen(server.socket_fd, BACKLOG_SIZE);
                 if (listen_result < 0)
                 {
-                    LOG(logger, "Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    LOG("Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
                 }
                 else
                 {
@@ -138,38 +137,47 @@ int main()
                     if (register_result < 0)
                     {
                         if (register_result == -2)
-                            LOG(logger, "Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
                         if (register_result == -1)
-                            LOG(logger, "Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
                     }
                     else
                     {
                         while(true)
                         {
-                            struct socket_event_data *event = wait_for_new_events(server.async);
-                            if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
+                            struct socket_event_waiting_result wait_result = wait_for_new_events(server.async);
+                            if (wait_result.error_code < 0)
                             {
-                                LOG(logger, "Incoming connection event...\n");
-                                int accept_connection_result = accept_connection(&server, server.socket_fd);
-                                if (accept_connection_result < 0)
+                                LOG("Could not receive events (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            }
+                            else if (wait_result.event_count > 0)
+                            {
+                                struct socket_event_data *event = wait_result.events;
+                                if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
                                 {
-                                    LOG(logger, "Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    LOG("Incoming connection event...\n");
+                                    int accept_connection_result = accept_connection(&server, server.socket_fd);
+                                    if (accept_connection_result < 0)
+                                    {
+                                        LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    }
+                                }
+                                else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
+                                {
+                                    memory_arena__reset(server.connection_allocator);
+
+                                    LOG("Incoming message event (socket %d)...\n", event->socket_fd);
+                                    int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
+                                    if (accept_read_result < 0)
+                                    {
+                                        LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    }
+
+                                    memory__set(event, 0, sizeof(struct socket_event_data));
+                                    logger__flush(&server.logger);
                                 }
                             }
-                            else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
-                            {
-                                memory_arena__reset(server.connection_allocator);
 
-                                LOG(logger, "Incoming message event (socket %d)...\n", event->socket_fd);
-                                int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
-                                if (accept_read_result < 0)
-                                {
-                                    LOG(logger, "Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
-                                }
-
-                                memory__set(event, 0, sizeof(struct socket_event_data));
-                                logger__flush(&server.logger);
-                            }
                         }
                     }
                 }
@@ -247,12 +255,12 @@ int accept_connection(struct webspider *server, int socket_fd)
     int accepted_socket = accept(socket_fd, &accepted_address, &accepted_address_size);
     if (accepted_socket < 0)
     {
-        LOG(logger, "Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG("Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
         result = -1;
     }
     else
     {
-        LOG(logger, "Accepted connection (socket: %d) from %d.%d.%d.%d:%d\n",
+        LOG("Accepted connection (socket: %d) from %d.%d.%d.%d:%d\n",
             accepted_socket,
             (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr      ) & 0xff,
             (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 8 ) & 0xff,
@@ -263,7 +271,7 @@ int accept_connection(struct webspider *server, int socket_fd)
         int nonblock_accepted_socket_result = make_socket_nonblocking(accepted_socket);
         if (nonblock_accepted_socket_result < 0)
         {
-            LOG(logger, "Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
+            LOG("Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
             result = -1;
         }
         else
@@ -273,43 +281,43 @@ int accept_connection(struct webspider *server, int socket_fd)
             int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
             if (bytes_received < 0)
             {
-                LOG(logger, "recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
+                LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
 
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    LOG(logger, "errno=EAGAIN or EWOULDBLOCK... adding to the kqueue\n");
+                    LOG("errno=EAGAIN or EWOULDBLOCK... adding to the kqueue\n");
 
                     int register_result = register_socket_to_read(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
-                            LOG(logger, "Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
                         if (register_result == -1)
-                            LOG(logger, "Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
 
                         result = -1;
-                        LOG(logger, "Closing incoming connection...\n");
+                        LOG("Closing incoming connection...\n");
                         close(accepted_socket);
                     }
                     else
                     {
-                        LOG(logger, "Added to async queue\n");
+                        LOG("Added to async queue\n");
                     }
                 }
                 else
                 {
-                    LOG(logger, "Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
                     result = -1;
                 }
             }
             else
             {
-                LOG(logger, "Successfully read %d bytes immediately!\n", bytes_received);
-                LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
+                LOG("Successfully read %d bytes immediately!\n", bytes_received);
+                LOG_UNTRUSTED(buffer.memory, bytes_received);
 
                 send_payload(server, accepted_socket);
 
-                LOG(logger, "Closing incoming connection...\n");
+                LOG("Closing incoming connection...\n");
                 close(accepted_socket);
             }
         }
@@ -328,11 +336,11 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
     int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
     if (bytes_received < 0)
     {
-        LOG(logger, "recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+        LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
 
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
-            LOG(logger, "errno=EAGAIN or EWOULDBLOCK... return to wait???\n");
+            LOG("errno=EAGAIN or EWOULDBLOCK...\n");
         }
         else
         {
@@ -341,17 +349,17 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
     }
     else if (bytes_received == 0)
     {
-        LOG(logger, "Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+        LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
     }
     else
     {
-        LOG(logger, "Successfully read %d bytes after the event!\n", bytes_received);
-        LOG_UNTRUSTED(logger, buffer.memory, bytes_received);
+        LOG("Successfully read %d bytes after the event!\n", bytes_received);
+        LOG_UNTRUSTED(buffer.memory, bytes_received);
 
         send_payload(server, accepted_socket);
     }
 
-    LOG(logger, "Closing incoming connection...\n");
+    LOG("Closing incoming connection...\n");
     close(accepted_socket);
 
     return result;
@@ -371,12 +379,12 @@ int send_payload(struct webspider *server, int accepted_socket)
     int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
     if (bytes_sent < 0)
     {
-        LOG(logger, "Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
         result = -1;
     }
     else
     {
-        LOG(logger, "Sent back %d bytes of http\n", bytes_sent);
+        LOG("Sent back %d bytes of http\n", bytes_sent);
     }
 
     return result;

@@ -1,5 +1,8 @@
 #include "logger.h"
 
+#include <time.h>
+
+
 
 bool is_symbol_ok(char c)
 {
@@ -113,8 +116,7 @@ void logger__flush(struct logger *logger)
     isize bytes_written = write(fd, string_to_write.memory, string_to_write.size);
     if (bytes_written < 0)
     {
-        // @todo:
-        // printf("Error write logger file (errno: %d - \"%s\")\n", errno, strerror(errno));
+        fprintf(stderr, "Error write logger file (errno: %d - \"%s\")\n", errno, strerror(errno));
     }
     string_builder__reset(&logger->sb);
 }

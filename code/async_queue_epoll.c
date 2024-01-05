@@ -40,11 +40,7 @@ int register_socket_to_read(struct async_context *context, int socket_to_registe
             };
 
             result = epoll_ctl(context->queue_fd, EPOLL_CTL_ADD, socket_to_register, &reg_event);
-            if (result < 0)
-            {
-                printf("Could not register, epoll_ctl failed (errno: %d - \"%s\")\n", errno, strerror(errno));
-            }
-            else
+            if (result >= 0)
             {
                 event->type = type;
                 event->socket_fd = socket_to_register;
@@ -57,50 +53,20 @@ int register_socket_to_read(struct async_context *context, int socket_to_registe
 }
 
 
-void debug_print_ev(struct socket_event_data *event)
+struct socket_event_waiting_result wait_for_new_events(struct async_context *context)
 {
-    if (event->type == SOCKET_EVENT__NONE)
-        printf("-");
-    else if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
-        printf("%d-IC", event->socket_fd);
-    else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
-        printf("%d-IM", event->socket_fd);
-    else
-        printf("ERR(%d)", event->socket_fd);
-}
-
-
-void debug_print_evs(struct async_context *context)
-{
-    debug_print_ev(context->registered_events + 0);
-    for (int i = 1; i < ARRAY_COUNT(context->registered_events); i++)
-    {
-        printf(", ");
-        debug_print_ev(context->registered_events + i);
-    }
-    printf("\n");
-}
-
-
-struct socket_event_data *wait_for_new_events(struct async_context *context)
-{
-    struct socket_event_data *result = NULL;
-
-    debug_print_evs(context);
+    struct socket_event_waiting_result result = {};
 
     struct epoll_event incoming_event;
     int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, -1);
-    if (event_count < 0)
-    {
-        printf("Error epoll_wait (errno: %d - \"%s\")\n", errno, strerror(errno));
-    }
-    else if (event_count > 0)
+    if (event_count > 0)
     {
         for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
         {
             if (context->registered_events[i].socket_fd == incoming_event.data.fd)
             {
-                result = context->registered_events + i;
+                result.events = context->registered_events + i;
+                result.event_count = 1;
                 break;
             }
         }

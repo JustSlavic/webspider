@@ -56,26 +56,28 @@ int register_socket_to_read(struct async_context *context, int socket_to_registe
 }
 
 
-struct socket_event_data *wait_for_new_events(struct async_context *context)
+struct socket_event_waiting_result wait_for_new_events(struct async_context *context)
 {
-    struct socket_event_data *result = NULL;
+    struct socket_event_waiting_result result = {};
 
     struct kevent incoming_event;
     int event_count = kevent(context->queue_fd,
-                              NULL, 0,
-                              &incoming_event, 1,
-                              NULL);
-    if (event_count < 0)
+                             NULL, 0,
+                             &incoming_event, 1,
+                             NULL);
+    if (event_count > 0 && (incoming_event.flags & EV_ERROR))
     {
-        printf("Error kevent incoming_event (errno: %d - \"%s\")\n", errno, strerror(errno));
-    }
-    else if (event_count > 0 && (incoming_event.flags & EV_ERROR))
-    {
-        printf("Error kevent incoming_event returned error event (errno: %d - \"%s\")\n", errno, strerror(errno));
+        // Ignore error messages for now
+        result.event_count = 0;
     }
     else if (event_count > 0)
     {
-        result = incoming_event.udata;
+        result.events = incoming_event.udata;
+        result.event_count = 1;
+    }
+    else
+    {
+        result.error_code = event_count;
     }
 
     return result;
