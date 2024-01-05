@@ -15,7 +15,7 @@ os_name=$(uname -s)
 
 function build() {
     case $os_name in
-        Darwin)
+        Darwin | Linux)
             gcc code/main_webspider.c -o bin/webspider -I code/based -Wall
             ;;
         *)
