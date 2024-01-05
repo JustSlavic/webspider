@@ -57,24 +57,31 @@ int register_socket_to_read(struct async_context *context, int socket_to_registe
 }
 
 
+void debug_print_ev(struct socket_event_data *event)
+{
+    if (event->type == SOCKET_EVENT__NONE)
+        printf("-");
+    else if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
+        printf("%d-IC", event->socket_fd);
+    else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
+        printf("%d-IM", event->socket_fd);
+    else
+        printf("ERR(%d)", event->socket_fd);
+}
+
+
 struct socket_event_data *wait_for_new_events(struct async_context *context)
 {
     struct socket_event_data *result = NULL;
 
-    printf("\nwaiting for new events...");
-    printf("available events: [(%d: %s)", context->registered_events[0].socket_fd,
-                                          context->registered_events[0].type == SOCKET_EVENT__NONE ? "-" :
-                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_CONNECTION ? "CON" :
-                                          context->registered_events[0].type == SOCKET_EVENT__INCOMING_MESSAGE ? "MSG" : "ERROR");
+    printf("\nwaiting for new events...\n");
+    debug_print_ev(context->registered_events + 0);
     for (int i = 1; i < ARRAY_COUNT(context->registered_events); i++)
     {
-        printf(", (%d: %s)", context->registered_events[i].socket_fd,
-                             context->registered_events[i].type == SOCKET_EVENT__NONE ? "-" :
-                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_CONNECTION ? "CON" :
-                             context->registered_events[i].type == SOCKET_EVENT__INCOMING_MESSAGE ? "MSG" : "ERROR");
-
+        printf(", ");
+        debug_print_ev(context->registered_events + i);
     }
-    printf("]\n");
+    printf("\n");
 
     struct epoll_event incoming_event;
     int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, -1);
