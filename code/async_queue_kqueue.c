@@ -1,45 +1,51 @@
 #include "async_queue.h"
 
+#include <stdlib.h>
 #include <sys/event.h>
 
 
-int create_async_context(struct async_context *context)
+struct async_context
 {
+    int queue_fd;
+    struct socket_event_data registered_events[MAX_EVENTS];
+};
+
+
+struct async_context *create_async_context()
+{
+    struct async_context *context = malloc(sizeof(struct async_context));
     memory__set(context, 0, sizeof(struct async_context));
-    int result = context->queue_fd = kqueue();
-    return result;
+    context->queue_fd = kqueue();
+    return context;
 }
 
+void destroy_async_context(struct async_context *context)
+{
+    close(context->queue_fd);
+}
 
 int register_socket_to_read(struct async_context *context, int socket_to_register, enum socket_event_type type)
 {
     int result = -2;
-
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
-        struct socket_event_data *data = context->registered_events + i;
-        if (data->type == SOCKET_EVENT__NONE)
+        struct socket_event_data *event = context->registered_events + i;
+        if (event->type == SOCKET_EVENT__NONE)
         {
             struct kevent reg_event;
             EV_SET(&reg_event, socket_to_register,
-                /* filter */ EVFILT_READ,
-                /* flags */ EV_ADD | EV_CLEAR,
-                /* fflags */ 0,
-                /* data */ 0,
-                /* udata */ data);
-            result = kevent(context->queue_fd,
-                            &reg_event, 1,
-                            NULL, 0,
-                            NULL);
-
+                   EVFILT_READ, EV_ADD | EV_CLEAR,
+                   0, 0, event);
+            result = kevent(context->queue_fd, &reg_event, 1,
+                            NULL, 0, NULL);
             if (result < 0)
             {
                 printf("Could not register, kevent failed (errno: %d - \"%s\")\n", errno, strerror(errno));
             }
             else
             {
-                data->type = type;
-                data->socket_fd = socket_to_register;
+                event->type = type;
+                event->socket_fd = socket_to_register;
             }
             break;
         }

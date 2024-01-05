@@ -19,13 +19,10 @@ struct socket_event_data
     int socket_fd;
 };
 
-struct async_context
-{
-    int queue_fd;
-    struct socket_event_data registered_events[MAX_EVENTS];
-};
+struct async_context;
 
-int create_async_context(struct async_context *context);
+struct async_context *create_async_context();
+void destroy_async_context(struct async_context *context);
 int register_socket_to_read(struct async_context *context, int socket_to_register, enum socket_event_type type);
 struct socket_event_data *wait_for_new_events(struct async_context *context);
 

@@ -138,7 +138,7 @@ int accept_connection(struct async_context *context, int server_socket)
                     if (register_result < 0)
                     {
                         if (register_result == -2)
-                            printf("Error coult not add to the kqueue because all %lu slots in the array are occupied\n", ARRAY_COUNT(context->registered_events));
+                            printf("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
                         if (register_result == -1)
                             printf("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
 
@@ -148,7 +148,7 @@ int accept_connection(struct async_context *context, int server_socket)
                     }
                     else
                     {
-                        printf("Added to kqueue\n");
+                        printf("Added to async queue\n");
                     }
                 }
                 else
@@ -181,8 +181,6 @@ int accepted_socket_ready_to_read(struct async_context *context, int accepted_so
     char buffer[1024];
     memory__set(buffer, 0, sizeof(buffer));
 
-    bool again = false;
-
     int bytes_received = recv(accepted_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_received < 0)
     {
@@ -191,7 +189,6 @@ int accepted_socket_ready_to_read(struct async_context *context, int accepted_so
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
             printf("errno=EAGAIN or EWOULDBLOCK... return to wait???\n");
-            again = true;
         }
         else
         {
@@ -211,15 +208,8 @@ int accepted_socket_ready_to_read(struct async_context *context, int accepted_so
         send_payload(accepted_socket);
     }
 
-    if (again)
-    {
-        printf("Returning without closing connection???\n");
-    }
-    else
-    {
-        printf("Closing incoming connection...\n");
-        close(accepted_socket);
-    }
+    printf("Closing incoming connection...\n");
+    close(accepted_socket);
 
     return result;
 }
@@ -227,12 +217,8 @@ int accepted_socket_ready_to_read(struct async_context *context, int accepted_so
 
 int main()
 {
-    int accepted_socket_list[BACKLOG_SIZE];
-    memory__set(accepted_socket_list, 0, sizeof(accepted_socket_list));
-
-    struct async_context context;
-    int create_async_context_result = create_async_context(&context);
-    if (create_async_context_result < 0)
+    struct async_context *context = create_async_context();
+    if (context == NULL)
     {
         printf("Error async queue\n");
         return EXIT_FAILURE;
@@ -273,11 +259,11 @@ int main()
                 }
                 else
                 {
-                    int register_result = register_socket_to_read(&context, server_socket, SOCKET_EVENT__INCOMING_CONNECTION);
+                    int register_result = register_socket_to_read(context, server_socket, SOCKET_EVENT__INCOMING_CONNECTION);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
-                            printf("Error coult not add to the kqueue because all %lu slots in the array are occupied\n", ARRAY_COUNT(context.registered_events));
+                            printf("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
                         if (register_result == -1)
                             printf("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
                     }
@@ -285,11 +271,11 @@ int main()
                     {
                         while(true)
                         {
-                            struct socket_event_data *event = wait_for_new_events(&context);
+                            struct socket_event_data *event = wait_for_new_events(context);
                             if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
                             {
                                 printf("Incoming connection event...\n");
-                                int accept_connection_result = accept_connection(&context, server_socket);
+                                int accept_connection_result = accept_connection(context, server_socket);
                                 if (accept_connection_result < 0)
                                 {
                                     printf("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -298,11 +284,13 @@ int main()
                             else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
                             {
                                 printf("Incoming message event (socket %d)...\n", event->socket_fd);
-                                int accept_read_result = accepted_socket_ready_to_read(&context, event->socket_fd);
+                                int accept_read_result = accepted_socket_ready_to_read(context, event->socket_fd);
                                 if (accept_read_result < 0)
                                 {
                                     printf("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
                                 }
+
+                                memory__set(event, 0, sizeof(struct socket_event_data));
                             }
                         }
                     }
@@ -313,7 +301,7 @@ int main()
         close(server_socket);
     }
 
-    close(context.queue_fd);
+    destroy_async_context(context);
     return 0;
 }
 
@@ -321,6 +309,7 @@ int main()
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.c"
 #elif OS_LINUX
+#include "async_queue_epoll.c"
 #endif
 
 
