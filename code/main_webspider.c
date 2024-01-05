@@ -69,7 +69,7 @@ memory_block make_http_response(memory_allocator allocator, string_builder *sb);
 
 int main()
 {
-    usize memory_size = MEGABYTES(5);
+    usize memory_size = MEGABYTES(10);
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
     memory_block global_memory = { .memory = memory, .size = memory_size };
@@ -371,7 +371,7 @@ int send_payload(struct webspider *server, int accepted_socket)
     struct logger *logger = &server->logger;
 
     string_builder sb = {
-        .memory = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(512)),
+        .memory = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32)),
         .used = 0
     };
     memory_block payload = make_http_response(server->connection_allocator, &sb);

@@ -8,9 +8,14 @@ mkdir -p bin
 if [ $# -eq 0 ]; then
     command="build"
 else
-    command="$1"
+    if [ "$1" = "debug" ]; then
+        command="build"
+        subcommand="debug"
+    else
+        command="$1"
+        subcommand="$2"
+    fi
 fi
-subcommand="$2"
 
 os_name=$(uname -s)
 
