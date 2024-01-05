@@ -16,7 +16,7 @@ os_name=$(uname -s)
 function build() {
     case $os_name in
         Darwin)
-            gcc code/main_macos.c -o bin/webspider -I code/based -Wall
+            gcc code/main_webspider.c -o bin/webspider -I code/based -Wall
             ;;
         *)
             echo "Unrecognazied os name ($os_name)"
