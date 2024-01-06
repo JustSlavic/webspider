@@ -11,8 +11,9 @@ struct webspider;
 enum socket_event_type
 {
     SOCKET_EVENT__NONE,
-    SOCKET_EVENT__INCOMING_CONNECTION,
-    SOCKET_EVENT__INCOMING_MESSAGE,
+    SOCKET_EVENT__INCOMING_CONNECTION = 0x1,
+    SOCKET_EVENT__INCOMING_MESSAGE    = 0x2,
+    SOCKET_EVENT__OUTGOING_MESSAGE    = 0x4,
 };
 
 struct socket_event_data
@@ -35,9 +36,8 @@ struct async_context;
 
 struct async_context *create_async_context();
 void destroy_async_context(struct async_context *context);
-int register_socket_to_read(struct async_context *context, int socket_to_register, enum socket_event_type type);
+int register_socket(struct async_context *context, int socket_to_register, enum socket_event_type type);
 struct socket_event_waiting_result wait_for_new_events(struct async_context *context);
-
 
 
 #endif // ASYNC_QUEUE_H

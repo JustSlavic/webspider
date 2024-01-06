@@ -62,6 +62,7 @@ memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
 int accept_connection(struct webspider *server, int socket_fd);
 int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket);
+int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket);
 int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(memory_allocator allocator, string_builder *sb);
 
@@ -133,7 +134,7 @@ int main()
                 }
                 else
                 {
-                    int register_result = register_socket_to_read(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
+                    int register_result = register_socket(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -162,22 +163,41 @@ int main()
                                         LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
                                     }
                                 }
-                                else if (event->type == SOCKET_EVENT__INCOMING_MESSAGE)
+                                else if (event->type & SOCKET_EVENT__INCOMING_MESSAGE)
                                 {
                                     memory_arena__reset(server.connection_allocator);
 
-                                    LOG("Incoming message event (socket %d)...\n", event->socket_fd);
+                                    LOG("Incoming message event (socket %d)\n", event->socket_fd);
                                     int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
                                     if (accept_read_result < 0)
                                     {
                                         LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
                                     }
 
+                                    LOG("Closing incoming connection\n");
+                                    close(event->socket_fd);
+
+                                    memory__set(event, 0, sizeof(struct socket_event_data));
+                                    logger__flush(&server.logger);
+                                }
+                                else if (event->type & SOCKET_EVENT__OUTGOING_MESSAGE)
+                                {
+                                    memory_arena__reset(server.connection_allocator);
+
+                                    LOG("Outgoing message event (socket %d)\n", event->socket_fd);
+                                    int accept_write_result = accepted_socket_ready_to_write(&server, event->socket_fd);
+                                    if (accept_write_result < 0)
+                                    {
+                                        LOG("Could not write to the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                    }
+
+                                    LOG("Closing incoming connection\n");
+                                    close(event->socket_fd);
+
                                     memory__set(event, 0, sizeof(struct socket_event_data));
                                     logger__flush(&server.logger);
                                 }
                             }
-
                         }
                     }
                 }
@@ -285,9 +305,8 @@ int accept_connection(struct webspider *server, int socket_fd)
 
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    LOG("errno=EAGAIN or EWOULDBLOCK... adding to the kqueue\n");
-
-                    int register_result = register_socket_to_read(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
+                    LOG("Register socket %d to the read messages\n", accepted_socket);
+                    int register_result = register_socket(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -317,7 +336,6 @@ int accept_connection(struct webspider *server, int socket_fd)
 
                 send_payload(server, accepted_socket);
 
-                LOG("Closing incoming connection...\n");
                 close(accepted_socket);
             }
         }
@@ -337,7 +355,6 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
     if (bytes_received < 0)
     {
         LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
-
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
             LOG("errno=EAGAIN or EWOULDBLOCK...\n");
@@ -365,6 +382,11 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
     return result;
 }
 
+int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket)
+{
+    return send_payload(server, accepted_socket);
+}
+
 int send_payload(struct webspider *server, int accepted_socket)
 {
     int result = 0;
@@ -376,15 +398,23 @@ int send_payload(struct webspider *server, int accepted_socket)
     };
     memory_block payload = make_http_response(server->connection_allocator, &sb);
 
-    int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-    if (bytes_sent < 0)
+    if (payload.memory == NULL)
     {
-        LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+        LOG("Failed to make http response in memory\n");
         result = -1;
     }
     else
     {
-        LOG("Sent back %d bytes of http\n", bytes_sent);
+        int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+        if (bytes_sent < 0)
+        {
+            LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+            result = -1;
+        }
+        else
+        {
+            LOG("Sent back %d bytes of http\n", bytes_sent);
+        }
     }
 
     return result;
