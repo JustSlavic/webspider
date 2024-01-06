@@ -22,6 +22,7 @@ os_name=$(uname -s)
 function build() {
     if [ "$subcommand" = "debug" ]; then
         DEBUG="-DDEBUG -g3"
+        WARNINGS="-Wall"
     else
         WARNINGS="-Wall -Werror"
     fi
