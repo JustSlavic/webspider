@@ -162,11 +162,11 @@ int main()
                                     {
                                         LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
                                     }
+
+                                    memory_arena__reset(server.connection_allocator);
                                 }
                                 else if (event->type & SOCKET_EVENT__INCOMING_MESSAGE)
                                 {
-                                    memory_arena__reset(server.connection_allocator);
-
                                     LOG("Incoming message event (socket %d)\n", event->socket_fd);
                                     int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
                                     if (accept_read_result < 0)
@@ -179,11 +179,10 @@ int main()
 
                                     memory__set(event, 0, sizeof(struct socket_event_data));
                                     logger__flush(&server.logger);
+                                    memory_arena__reset(server.connection_allocator);
                                 }
                                 else if (event->type & SOCKET_EVENT__OUTGOING_MESSAGE)
                                 {
-                                    memory_arena__reset(server.connection_allocator);
-
                                     LOG("Outgoing message event (socket %d)\n", event->socket_fd);
                                     int accept_write_result = accepted_socket_ready_to_write(&server, event->socket_fd);
                                     if (accept_write_result < 0)
@@ -196,6 +195,7 @@ int main()
 
                                     memory__set(event, 0, sizeof(struct socket_event_data));
                                     logger__flush(&server.logger);
+                                    memory_arena__reset(server.connection_allocator);
                                 }
                             }
                         }
