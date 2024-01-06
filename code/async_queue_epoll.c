@@ -26,7 +26,7 @@ void destroy_async_context(struct async_context *context)
 }
 
 
-int register_socket_to_read(struct async_context *context, int socket_to_register, enum socket_event_type type)
+int register_socket(struct async_context *context, int socket_to_register, enum socket_event_type type)
 {
     int result = -2;
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
@@ -34,8 +34,16 @@ int register_socket_to_read(struct async_context *context, int socket_to_registe
         struct socket_event_data *event = context->registered_events + i;
         if (event->type == SOCKET_EVENT__NONE)
         {
+            bool to_read  = ((type & SOCKET_EVENT__INCOMING_CONNECTION) != 0) || ((type & SOCKET_EVENT__INCOMING_MESSAGE) != 0);
+            bool to_write = ((type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0);
+
+            int event_types = 0;
+            if (to_read && to_write) event_types = EPOLLIN | EPOLLOUT;
+            else if (!to_read && to_write) event_types = EPOLLOUT;
+            else if (to_read && !to_write) event_types = EPOLLIN;
+
             struct epoll_event reg_event = {
-                .events  = EPOLLIN,
+                .events  = event_types,
                 .data.fd = socket_to_register,
             };
 
