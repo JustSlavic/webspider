@@ -1,6 +1,5 @@
 # Build directories
 bin/
-build/
 
 # Sublime Text
 *.sublime-workspace
@@ -10,3 +9,8 @@ build/
 
 # Apple bs
 *.DS_Store
+
+# PVS Studio
+compile_commands.json
+pvs_output.log
+pvs_report.json

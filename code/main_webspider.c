@@ -376,9 +376,6 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
         send_payload(server, accepted_socket);
     }
 
-    LOG("Closing incoming connection...\n");
-    close(accepted_socket);
-
     return result;
 }
 
