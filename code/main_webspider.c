@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 
 // Project-specific
 #include "webspider.h"
@@ -49,8 +50,61 @@ const char payload_500[] =
 "</html>\n"
 ;
 
+bool is_symbol_ok(char c)
+{
+    return (('0' <= c) && (c <= '9')) ||
+           (('a' <= c) && (c <= 'z')) ||
+           (('A' <= c) && (c <= 'Z')) ||
+            (c == '.') || (c == ',')  ||
+            (c == ':') || (c == ';')  ||
+            (c == '!') || (c == '?')  ||
+            (c == '@') || (c == '#')  ||
+            (c == '$') || (c == '%')  ||
+            (c == '^') || (c == '&')  ||
+            (c == '*') || (c == '~')  ||
+            (c == '(') || (c == ')')  ||
+            (c == '<') || (c == '>')  ||
+            (c == '[') || (c == ']')  ||
+            (c == '{') || (c == '}')  ||
+            (c == '-') || (c == '+')  ||
+            (c == '/') || (c == '\\') ||
+            (c == '"') || (c == '\'') ||
+            (c == '`') || (c == '=')  ||
+            (c == ' ') || (c == '\n') ||
+            (c == '\r')|| (c == '\t');
+}
+
+#if DEBUG
+#define LOG_UNTRUSTED(BUFFER, SIZE) do { \
+    for (usize i = 0; i < (SIZE); i++) \
+    { \
+        LOG("[%s:%d] ", cl.filename, cl.line); \
+        char c = (BUFFER)[i]; \
+        if (is_symbol_ok(c)) \
+            LOG("%c", c); \
+        else \
+            LOG("\\0x%x", (int) c); \
+    } \
+    } while (0)
+#else
+#define LOG_UNTRUSTED(BUFFER, SIZE) do { \
+    time_t t = time(NULL); \
+    struct tm tm = *localtime(&t); \
+    for (usize i = 0; i < (SIZE); i++) \
+    { \
+        string_builder__append_format(&logger->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+        char c = (BUFFER)[i]; \
+        if (is_symbol_ok(c)) \
+            LOG("%c", c); \
+        else \
+            LOG("\\0x%x", (int) c); \
+    } \
+    } while (0)
+#endif
+
 
 #define BACKLOG_SIZE 32
+#define LOG_FILENAME "log.txt"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
 
 #define IP4_ANY 0
@@ -64,7 +118,7 @@ int accept_connection(struct webspider *server, int socket_fd);
 int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket);
 int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket);
 int send_payload(struct webspider *server, int accepted_socket);
-memory_block make_http_response(memory_allocator allocator, string_builder *sb);
+memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
 
 
 
@@ -75,22 +129,22 @@ int main()
     memory__set(memory, 0, memory_size);
     memory_block global_memory = { .memory = memory, .size = memory_size };
 
+
     struct webspider server = {
         .socket_fd = 0,
         .async = NULL,
 
         .webspider_allocator = make_memory_arena(global_memory),
         .connection_allocator = allocate_memory_arena(server.webspider_allocator, MEGABYTES(1)),
-
-        .logger = {
-            .filename = "log.txt",
-            .sb = {
-                .memory = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1)),
-                .used = 0,
-            },
+    };
+    struct logger logger_ = {
+        .sb = {
+            .memory = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1)),
+            .used = 0,
         },
     };
-    struct logger *logger = &server.logger;
+    server.logger = &logger_;
+    LOGGER(&server);
 
     server.async = create_async_context();
     if (server.async == NULL)
@@ -178,7 +232,7 @@ int main()
                                     close(event->socket_fd);
 
                                     memory__set(event, 0, sizeof(struct socket_event_data));
-                                    logger__flush(&server.logger);
+                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                     memory_arena__reset(server.connection_allocator);
                                 }
                                 else if (event->type & SOCKET_EVENT__OUTGOING_MESSAGE)
@@ -194,7 +248,7 @@ int main()
                                     close(event->socket_fd);
 
                                     memory__set(event, 0, sizeof(struct socket_event_data));
-                                    logger__flush(&server.logger);
+                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                     memory_arena__reset(server.connection_allocator);
                                 }
                             }
@@ -229,15 +283,19 @@ memory_block load_file(memory_allocator allocator, char const *filename)
     }
 
     memory_block block = ALLOCATE_BUFFER(allocator, st.st_size);
-    uint32 bytes_read = read(fd, block.memory, st.st_size);
-
-    if (bytes_read < st.st_size)
+    if (block.memory != NULL)
     {
-        DEALLOCATE(allocator, block);
-        return result;
+        uint32 bytes_read = read(fd, block.memory, st.st_size);
+        if (bytes_read < st.st_size)
+        {
+            DEALLOCATE(allocator, block);
+        }
+        else
+        {
+            result = block;
+        }
     }
 
-    result = block;
     return result;
 }
 
@@ -266,8 +324,9 @@ int make_socket_nonblocking(int fd)
 
 int accept_connection(struct webspider *server, int socket_fd)
 {
+    LOGGER(server);
+
     int result = 0;
-    struct logger *logger = &server->logger;
 
     struct sockaddr accepted_address;
     socklen_t accepted_address_size = sizeof(accepted_address);
@@ -297,46 +356,55 @@ int accept_connection(struct webspider *server, int socket_fd)
         else
         {
             memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
-
-            int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
-            if (bytes_received < 0)
+            if (buffer.memory == NULL)
             {
-                LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
-
-                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                LOG("Could not allocate 16Kb to place received message");
+                LOG("Closing incoming connection\n");
+                close(accepted_socket);
+            }
+            else
+            {
+                int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
+                if (bytes_received < 0)
                 {
-                    LOG("Register socket %d to the read messages\n", accepted_socket);
-                    int register_result = register_socket(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
-                    if (register_result < 0)
-                    {
-                        if (register_result == -2)
-                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
-                        if (register_result == -1)
-                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
 
-                        result = -1;
-                        LOG("Closing incoming connection...\n");
-                        close(accepted_socket);
+                    if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    {
+                        LOG("Register socket %d to the read messages\n", accepted_socket);
+                        int register_result = register_socket(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
+                        if (register_result < 0)
+                        {
+                            if (register_result == -2)
+                                LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            if (register_result == -1)
+                                LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+
+                            result = -1;
+                            LOG("Closing incoming connection\n");
+                            close(accepted_socket);
+                        }
+                        else
+                        {
+                            LOG("Added to async queue\n");
+                        }
                     }
                     else
                     {
-                        LOG("Added to async queue\n");
+                        LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        result = -1;
                     }
                 }
                 else
                 {
-                    LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
-                    result = -1;
+                    LOG("Successfully read %d bytes immediately!\n", bytes_received);
+                    LOG_UNTRUSTED(buffer.memory, bytes_received);
+
+                    send_payload(server, accepted_socket);
+
+                    LOG("Closing incoming connection\n");
+                    close(accepted_socket);
                 }
-            }
-            else
-            {
-                LOG("Successfully read %d bytes immediately!\n", bytes_received);
-                LOG_UNTRUSTED(buffer.memory, bytes_received);
-
-                send_payload(server, accepted_socket);
-
-                close(accepted_socket);
             }
         }
     }
@@ -346,34 +414,41 @@ int accept_connection(struct webspider *server, int socket_fd)
 
 int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
 {
+    LOGGER(server);
+
     int result = 0;
-    struct logger *logger = &server->logger;
 
     memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
-
-    int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
-    if (bytes_received < 0)
+    if (buffer.memory == NULL)
     {
-        LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            LOG("errno=EAGAIN or EWOULDBLOCK...\n");
-        }
-        else
-        {
-            result = -1;
-        }
-    }
-    else if (bytes_received == 0)
-    {
-        LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+        LOG("Could not allocate 16Kb to place received message");
     }
     else
     {
-        LOG("Successfully read %d bytes after the event!\n", bytes_received);
-        LOG_UNTRUSTED(buffer.memory, bytes_received);
+        int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
+        if (bytes_received < 0)
+        {
+            LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                LOG("errno=EAGAIN or EWOULDBLOCK...\n");
+            }
+            else
+            {
+                result = -1;
+            }
+        }
+        else if (bytes_received == 0)
+        {
+            LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+        }
+        else
+        {
+            LOG("Successfully read %d bytes after the event!\n", bytes_received);
+            LOG_UNTRUSTED(buffer.memory, bytes_received);
 
-        send_payload(server, accepted_socket);
+            send_payload(server, accepted_socket);
+        }
     }
 
     return result;
@@ -386,31 +461,40 @@ int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket
 
 int send_payload(struct webspider *server, int accepted_socket)
 {
+    LOGGER(server);
+
     int result = 0;
-    struct logger *logger = &server->logger;
 
-    string_builder sb = {
-        .memory = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32)),
-        .used = 0
-    };
-    memory_block payload = make_http_response(server->connection_allocator, &sb);
-
-    if (payload.memory == NULL)
+    memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
+    if (response_buffer.memory == NULL)
     {
-        LOG("Failed to make http response in memory\n");
-        result = -1;
+        LOG("Could not allocate 32Kb to place http response");
     }
     else
     {
-        int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-        if (bytes_sent < 0)
+        string_builder sb = {
+            .memory = response_buffer,
+            .used = 0
+        };
+        memory_block payload = make_http_response(server, server->connection_allocator, &sb);
+
+        if (payload.memory == NULL)
         {
-            LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+            LOG("Failed to make http response in memory\n");
             result = -1;
         }
         else
         {
-            LOG("Sent back %d bytes of http\n", bytes_sent);
+            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+            if (bytes_sent < 0)
+            {
+                LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+                result = -1;
+            }
+            else
+            {
+                LOG("Sent back %d bytes of http\n", bytes_sent);
+            }
         }
     }
 
@@ -418,10 +502,17 @@ int send_payload(struct webspider *server, int accepted_socket)
 }
 
 
-memory_block make_http_response(memory_allocator allocator, string_builder *sb)
+memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb)
 {
-    memory_block file = load_file(allocator, "../www/index.html");
-    if (file.memory != NULL)
+    LOGGER(server);
+
+    char const *filename = "../www/index.html";
+    memory_block file = load_file(allocator, filename);
+    if (file.memory == NULL)
+    {
+        LOG("Could not load file \"%s\"", filename);
+    }
+    else
     {
         string_builder__append_format(sb, payload_template, file.size);
         string_builder__append_buffer(sb, file);

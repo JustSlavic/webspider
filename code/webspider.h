@@ -15,7 +15,7 @@ struct webspider
     memory_allocator webspider_allocator;
     memory_allocator connection_allocator;
 
-    struct logger logger;
+    struct logger *logger;
 };
 
 
