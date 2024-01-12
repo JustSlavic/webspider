@@ -4,6 +4,7 @@ After=online.target
 
 [Service]
 Type=simple
+LimitCORE=infinite
 ExecStart=/home/webspider/bin/webspider
 WorkingDirectory=/home/webspider/www
 Restart=always
