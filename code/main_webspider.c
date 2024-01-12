@@ -76,28 +76,28 @@ bool is_symbol_ok(char c)
 
 #if DEBUG
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
+    printf("[%s:%d] ", cl.filename, cl.line); \
     for (usize i = 0; i < (SIZE); i++) \
     { \
-        LOG("[%s:%d] ", cl.filename, cl.line); \
         char c = (BUFFER)[i]; \
         if (is_symbol_ok(c)) \
-            LOG("%c", c); \
+            printf("%c", c); \
         else \
-            LOG("\\0x%x", (int) c); \
+            printf("\\0x%x", (int) c); \
     } \
     } while (0)
 #else
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
     time_t t = time(NULL); \
     struct tm tm = *localtime(&t); \
+    string_builder__append_format(&logger->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
     for (usize i = 0; i < (SIZE); i++) \
     { \
-        string_builder__append_format(&logger->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
         char c = (BUFFER)[i]; \
         if (is_symbol_ok(c)) \
-            LOG("%c", c); \
+            string_builder__append_format(&logger->sb, "%c", c); \
         else \
-            LOG("\\0x%x", (int) c); \
+            string_builder__append_format(&logger->sb, "\\0x%x", (int) c); \
     } \
     } while (0)
 #endif
