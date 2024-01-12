@@ -223,8 +223,11 @@ int main()
                             struct socket_event_waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
                             if (wait_result.error_code < 0)
                             {
+                                if (errno != EINTR)
+                                {
+                                    LOG("Could not receive events (%d) (errno: %d - \"%s\")\n", wait_result.error_code, errno, strerror(errno));
+                                }
                                 // @todo: pruning
-                                LOG("Could not receive events (errno: %d - \"%s\")\n", errno, strerror(errno));
                             }
                             else if (wait_result.event_count > 0)
                             {
@@ -279,10 +282,13 @@ int main()
             }
         }
 
+        LOG("Closing server socket (%d)\n", server.socket_fd);
         close(server.socket_fd);
     }
 
     destroy_async_context(server.async);
+    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+
     return 0;
 }
 
