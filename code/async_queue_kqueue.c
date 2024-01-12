@@ -63,12 +63,14 @@ int register_socket(struct async_context *context, int socket_to_register, enum 
     return result;
 }
 
-struct socket_event_waiting_result wait_for_new_events(struct async_context *context)
+struct socket_event_waiting_result wait_for_new_events(struct async_context *context, int milliseconds)
 {
     struct socket_event_waiting_result result = {};
 
+    struct timespec timeout = { 0, 1000 * milliseconds };
+
     struct kevent incoming_event;
-    int event_count = kevent(context->queue_fd, NULL, 0, &incoming_event, 1, NULL);
+    int event_count = kevent(context->queue_fd, NULL, 0, &incoming_event, 1, &timeout);
     if (event_count > 0 && (incoming_event.flags & EV_ERROR))
     {
         // Ignore error messages for now

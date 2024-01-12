@@ -37,7 +37,7 @@ struct async_context;
 struct async_context *create_async_context();
 void destroy_async_context(struct async_context *context);
 int register_socket(struct async_context *context, int socket_to_register, enum socket_event_type type);
-struct socket_event_waiting_result wait_for_new_events(struct async_context *context);
+struct socket_event_waiting_result wait_for_new_events(struct async_context *context, int milliseconds);
 
 
 #endif // ASYNC_QUEUE_H

@@ -104,6 +104,7 @@ bool is_symbol_ok(char c)
 #endif
 
 
+#define WAIT_TIMEOUT 100
 #define BACKLOG_SIZE 32
 #define LOG_FILENAME "log.txt"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
@@ -122,9 +123,9 @@ int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
 
 
-GLOBAL struct webspider *server__ = NULL;
+GLOBAL volatile bool running;
 void signal__SIGINT(int dummy) {
-    if (server__) close(server__->socket_fd);
+    running = false;
 }
 
 int main()
@@ -151,7 +152,6 @@ int main()
             .used = 0,
         },
     };
-    server__ = &server;
     server.logger = &logger_;
     LOGGER(&server);
 
@@ -217,11 +217,12 @@ int main()
                     }
                     else
                     {
-                        while(true)
+                        while(running)
                         {
-                            struct socket_event_waiting_result wait_result = wait_for_new_events(server.async);
+                            struct socket_event_waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
                             if (wait_result.error_code < 0)
                             {
+                                // @todo: pruning
                                 LOG("Could not receive events (errno: %d - \"%s\")\n", errno, strerror(errno));
                             }
                             else if (wait_result.event_count > 0)

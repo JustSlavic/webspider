@@ -61,12 +61,12 @@ int register_socket(struct async_context *context, int socket_to_register, enum 
 }
 
 
-struct socket_event_waiting_result wait_for_new_events(struct async_context *context)
+struct socket_event_waiting_result wait_for_new_events(struct async_context *context, int milliseconds)
 {
     struct socket_event_waiting_result result = {};
 
     struct epoll_event incoming_event;
-    int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, -1);
+    int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, milliseconds);
     if (event_count > 0)
     {
         for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
