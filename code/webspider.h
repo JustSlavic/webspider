@@ -2,8 +2,8 @@
 #define WEBSPIDER_H
 
 #include <base.h>
+#include <logger.h>
 #include "async_queue.h"
-#include "logger.h"
 
 
 struct webspider
