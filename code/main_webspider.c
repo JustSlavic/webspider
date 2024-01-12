@@ -19,6 +19,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 
 // Project-specific
 #include "webspider.h"
@@ -121,9 +122,15 @@ int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
 
 
+GLOBAL struct webspider *server__ = NULL;
+void signal__SIGINT(int dummy) {
+    if (server__) close(server__->socket_fd);
+}
 
 int main()
 {
+    signal(SIGINT, signal__SIGINT);
+
     usize memory_size = MEGABYTES(10);
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
@@ -137,12 +144,14 @@ int main()
         .webspider_allocator = make_memory_arena(global_memory),
         .connection_allocator = allocate_memory_arena(server.webspider_allocator, MEGABYTES(1)),
     };
+
     struct logger logger_ = {
         .sb = {
             .memory = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1)),
             .used = 0,
         },
     };
+    server__ = &server;
     server.logger = &logger_;
     LOGGER(&server);
 
