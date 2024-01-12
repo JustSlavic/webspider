@@ -217,6 +217,7 @@ int main()
                     }
                     else
                     {
+                        running = true;
                         while(running)
                         {
                             struct socket_event_waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
