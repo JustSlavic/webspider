@@ -177,6 +177,16 @@ int main()
             int bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
             if (bind_result < 0)
             {
+                if (errno == EADDRINUSE)
+                {
+                    int reuse = 1;
+                    setsockopt(server.socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+                    bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
+                }
+            }
+
+            if (bind_result < 0)
+            {
                 LOG("Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
             }
             else
