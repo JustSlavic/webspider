@@ -76,7 +76,7 @@ bool is_symbol_ok(char c)
 
 #if DEBUG
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
-    printf("[%s:%d] ", __FILE__, __LINE__); \
+    printf("[%s:%d]\n", __FILE__, __LINE__); \
     for (usize i = 0; i < (SIZE); i++) \
     { \
         char c = (BUFFER)[i]; \
@@ -90,7 +90,7 @@ bool is_symbol_ok(char c)
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
     time_t t = time(NULL); \
     struct tm tm = *localtime(&t); \
-    string_builder__append_format(&logger->sb, "[%d-%02d-%02d %02d:%02d:%02d] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
+    string_builder__append_format(&logger->sb, "[%d-%02d-%02d %02d:%02d:%02d]\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); \
     for (usize i = 0; i < (SIZE); i++) \
     { \
         char c = (BUFFER)[i]; \
