@@ -76,7 +76,7 @@ bool is_symbol_ok(char c)
 
 #if DEBUG
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
-    printf("[%s:%d] ", cl.filename, cl.line); \
+    printf("[%s:%d] ", __FILE__, __LINE__); \
     for (usize i = 0; i < (SIZE); i++) \
     { \
         char c = (BUFFER)[i]; \
