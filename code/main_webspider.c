@@ -207,7 +207,7 @@ int main()
                 }
                 else
                 {
-                    int register_result = register_socket(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
+                    int register_result = queue__register(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -220,7 +220,7 @@ int main()
                         running = true;
                         while(running)
                         {
-                            struct socket_event_waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
+                            queue__waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
@@ -231,7 +231,7 @@ int main()
                             }
                             else if (wait_result.event_count > 0)
                             {
-                                struct socket_event_data *event = wait_result.events;
+                                queue__event_data *event = wait_result.events;
                                 if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
                                 {
                                     LOG("Incoming connection event...\n");
@@ -255,7 +255,7 @@ int main()
                                     LOG("Closing incoming connection\n");
                                     close(event->socket_fd);
 
-                                    memory__set(event, 0, sizeof(struct socket_event_data));
+                                    memory__set(event, 0, sizeof(queue__event_data));
                                     logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                     memory_arena__reset(server.connection_allocator);
                                 }
@@ -271,7 +271,7 @@ int main()
                                     LOG("Closing incoming connection\n");
                                     close(event->socket_fd);
 
-                                    memory__set(event, 0, sizeof(struct socket_event_data));
+                                    memory__set(event, 0, sizeof(queue__event_data));
                                     logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                     memory_arena__reset(server.connection_allocator);
                                 }
@@ -399,7 +399,7 @@ int accept_connection(struct webspider *server, int socket_fd)
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                     {
                         LOG("Register socket %d to the read messages\n", accepted_socket);
-                        int register_result = register_socket(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
+                        int register_result = queue__register(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
                         if (register_result < 0)
                         {
                             if (register_result == -2)

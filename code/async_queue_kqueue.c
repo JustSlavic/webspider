@@ -7,7 +7,7 @@
 struct async_context
 {
     int queue_fd;
-    struct socket_event_data registered_events[MAX_EVENTS];
+    queue__event_data registered_events[MAX_EVENTS];
 };
 
 
@@ -25,16 +25,17 @@ void destroy_async_context(struct async_context *context)
     free(context);
 }
 
-int register_socket(struct async_context *context, int socket_to_register, enum socket_event_type type)
+int queue__register(struct async_context *context, int socket_to_register, queue__event_type type)
 {
     int result = -2;
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
-        struct socket_event_data *event = context->registered_events + i;
-        if (event->type == SOCKET_EVENT__NONE)
+        queue__event_data *event = context->registered_events + i;
+        if (event->type == QUEUE_EVENT__NONE)
         {
-            bool to_read  = ((type & SOCKET_EVENT__INCOMING_CONNECTION) != 0) || ((type & SOCKET_EVENT__INCOMING_MESSAGE) != 0);
-            bool to_write = ((type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0);
+            bool to_read  = (type & SOCKET_EVENT__INCOMING_CONNECTION) != 0 ||
+                            (type & SOCKET_EVENT__INCOMING_MESSAGE) != 0;
+            bool to_write = (type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0;
 
             struct kevent reg_events[2] = {}; // 0 - read, 1 - write
             EV_SET(&reg_events[0], socket_to_register, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, event);
@@ -63,9 +64,9 @@ int register_socket(struct async_context *context, int socket_to_register, enum 
     return result;
 }
 
-struct socket_event_waiting_result wait_for_new_events(struct async_context *context, int milliseconds)
+queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds)
 {
-    struct socket_event_waiting_result result = {};
+    queue__waiting_result result = {};
 
     struct timespec timeout = { 0, 1000 * milliseconds };
 
