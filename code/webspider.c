@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
 
@@ -134,6 +135,10 @@ memory_block prepare_report(struct webspider *server);
 
 
 GLOBAL volatile bool running;
+GLOBAL uint64 connections_done;
+GLOBAL uint64 connections_time_ring_buffer[128];
+GLOBAL uint32 connections_time_ring_buffer_index;
+
 void signal__SIGINT(int dummy) {
     running = false;
 }
@@ -146,7 +151,6 @@ int main()
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
     memory_block global_memory = { .memory = memory, .size = memory_size };
-
 
     struct webspider server = {
         .socket_fd = 0,
@@ -304,12 +308,24 @@ int main()
                                     if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
                                         LOG("Incoming connection event...\n");
+                                        {
+                                            uint32 index = (connections_time_ring_buffer_index++);
+                                            if (connections_time_ring_buffer_index > ARRAY_COUNT(connections_time_ring_buffer))
+                                                connections_time_ring_buffer_index = 0;
+
+                                            struct timeval tv;
+                                            gettimeofday(&tv,NULL);
+
+                                            connections_time_ring_buffer[index] = 1000000LLU * tv.tv_sec + tv.tv_usec;
+                                        }
+
                                         int accept_connection_result = accept_connection_inet(&server, event->socket_fd);
                                         if (accept_connection_result < 0)
                                         {
                                             LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
                                         }
 
+                                        connections_done += 1;
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
@@ -805,8 +821,10 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
 
 memory_block prepare_report(struct webspider *server)
 {
+    // @todo: move this "rendering" part to the inspector,
+    // It is more convinient to pass only data;
     char spaces[]  = "                                        ";
-    char squares[] = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+    char squares[] = "########################################";
 
     struct memory_allocator__report m_report1 = memory_allocator__report(server->webspider_allocator);
     int n_spaces1 = truncate_to_int32(40.0f * m_report1.used / m_report1.size);
@@ -816,7 +834,25 @@ memory_block prepare_report(struct webspider *server)
 
     struct async_context__report q_report = async_context__report(server->async);
 
+    int connections_counted = 0;
+    uint64 min_time = 0xffffffffffffffff;
+    uint64 max_time = 1;
+
+    for (int i = 0; i < ARRAY_COUNT(connections_time_ring_buffer); i++)
+    {
+        uint64 value = connections_time_ring_buffer[i];
+        if (value != 0)
+        {
+            if (value < min_time) min_time = value;
+            if (value > max_time) max_time = value;
+            connections_counted += 1;
+        }
+    }
+
+    float32 connections_per_second = (float32) 1000000.0f * connections_counted / (max_time - min_time);
+
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
+    string_builder__append_format(&sb, "Connections done:\n    %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
     string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
     string_builder__append_format(&sb, "webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
     string_builder__append_format(&sb, "+----------------------------------------+\n");
