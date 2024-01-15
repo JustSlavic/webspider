@@ -3,7 +3,7 @@
 set -e
 
 PROJECT=webspider
-STANDARD=c99
+STANDARD=c11
 COMPILE_COMMANDS_FILE=compile_commands.json
 
 mkdir -p bin

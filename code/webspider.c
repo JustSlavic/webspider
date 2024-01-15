@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 // Based
 #include <base.h>
 #include <integer.h>
@@ -5,6 +7,7 @@
 #include <memory_allocator.h>
 #include <string_builder.h>
 #include <float32.h>
+#include <logger.h>
 
 // *nix
 #include <unistd.h>
@@ -26,7 +29,6 @@
 // Project-specific
 #include "webspider.h"
 #include "async_queue.h"
-#include "logger.h"
 
 
 const char payload_template[] =
@@ -385,7 +387,7 @@ memory_block load_file(memory_allocator allocator, char const *filename)
 {
     memory_block result = {};
 
-    int fd = open(filename, O_NOFOLLOW | O_RDONLY, 0);
+    int fd = open(filename, O_RDONLY, 0);
     if (fd < 0)
     {
         return result;
