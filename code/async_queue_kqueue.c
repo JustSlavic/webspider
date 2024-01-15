@@ -90,3 +90,12 @@ queue__waiting_result wait_for_new_events(struct async_context *context, int mil
     return result;
 }
 
+
+struct async_context__report async_context__report(struct async_context *context)
+{
+    struct async_context__report report;
+    memory__copy(report.events_in_work, context->registered_events, sizeof(context->registered_events));
+
+    return report;
+}
+

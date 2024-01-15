@@ -48,5 +48,12 @@ FORCE_INLINE bool32 queue_event__is(queue__event_data *event, queue__event_type 
     return (event->event_type & t) > 0;
 }
 
+struct async_context__report
+{
+    queue__event_data events_in_work[MAX_EVENTS];
+};
+
+struct async_context__report async_context__report(struct async_context *context);
+
 
 #endif // ASYNC_QUEUE_H

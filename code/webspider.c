@@ -90,6 +90,7 @@ bool is_symbol_ok(char c)
         else \
             printf("\\0x%x", (int) c); \
     } \
+    printf("\n"); \
     } while (0)
 #else
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
@@ -104,6 +105,7 @@ bool is_symbol_ok(char c)
         else \
             string_builder__append_format(&logger->sb, "\\0x%x", (int) c); \
     } \
+    string_builder__append_format(&logger->sb, "\n"); \
     } while (0)
 #endif
 
@@ -128,7 +130,7 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
 int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket);
 int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
-memory_block prepare_memory_report(struct webspider *server);
+memory_block prepare_report(struct webspider *server);
 
 
 GLOBAL volatile bool running;
@@ -620,7 +622,7 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
                     LOG("Successfully read %d bytes immediately!\n", bytes_received);
                     LOG_UNTRUSTED(buffer.memory, bytes_received);
 
-                    memory_block report = prepare_memory_report(server);
+                    memory_block report = prepare_report(server);
                     if (report.memory != NULL)
                     {
                         int bytes_sent = send(accepted_socket, report.memory, report.size, 0);
@@ -718,7 +720,7 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
             LOG("Successfully read %d bytes after the event!\n", bytes_received);
             LOG_UNTRUSTED(buffer.memory, bytes_received);
 
-            memory_block report = prepare_memory_report(server);
+            memory_block report = prepare_report(server);
             if (report.memory != NULL)
             {
                 int bytes_sent = send(accepted_socket, report.memory, report.size, 0);
@@ -801,20 +803,48 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
     return string_builder__get_string(sb);
 }
 
-memory_block prepare_memory_report(struct webspider *server)
+memory_block prepare_report(struct webspider *server)
 {
     char spaces[] = "                                        ";
     char squares[] = "▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮";
+
+    struct memory_allocator__report m_report = memory_allocator__report(server->connection_allocator);
+    int n_spaces = truncate_to_int32(40.0f * m_report.used / m_report.size);
+
+    struct async_context__report q_report = async_context__report(server->async);
+
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
-
-    struct memory_allocator__report report = memory_allocator__report(server->connection_allocator);
-    int n_spaces = truncate_to_int32(40.0f * report.used / report.size);
-
     string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
-    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", report.used, report.size);
+    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", m_report.used, m_report.size);
     string_builder__append_format(&sb, "+----------------------------------------+\n");
     string_builder__append_format(&sb, "|%.*s|%.*s|\n", n_spaces, squares, 40 - n_spaces - 1, spaces);
     string_builder__append_format(&sb, "+----------------------------------------+\n");
+    string_builder__append_format(&sb, "==========================================\n");
+    string_builder__append_format(&sb, "ASYNC QUEUE BUFFER:\n");
+    for (int i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
+    {
+        queue__event_data *e = q_report.events_in_work + i;
+        string_builder__append_format(&sb, "%2d)", i + 1);
+        if (e->socket_fd != 0)
+        {
+            string_builder__append_format(&sb, " [%5d]", e->socket_fd);
+        }
+        else
+        {
+            string_builder__append_format(&sb, " [     ]");
+        }
+        if (e->event_type != 0)
+        {
+            string_builder__append_format(&sb, " %s | %s",
+                e->event_type == 0 ? "" :
+                queue_event__is(e, QUEUE_EVENT__INET_SOCKET) ? "INET" : "UNIX",
+                e->event_type == 0 ? "" :
+                queue_event__is(e, SOCKET_EVENT__INCOMING_CONNECTION) ? "CONNECTIONS" :
+                queue_event__is(e, SOCKET_EVENT__INCOMING_MESSAGE) ? "INCOMING MSG" : "OUTGOING MSG");
+        }
+        string_builder__append_format(&sb, "\n");
+    }
+    string_builder__append_format(&sb, "==========================================\n");
 
     return string_builder__get_string(&sb);
 }

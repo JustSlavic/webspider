@@ -30,8 +30,8 @@ int main()
         }
         else
         {
-            char msg[] = "Hello!";
-            int bytes_sent = send(webspider_fd, msg, sizeof(msg), 0);
+            char msg[] = "report";
+            int bytes_sent = send(webspider_fd, msg, sizeof(msg) - 1, 0); // @note minus null terminator
             if (bytes_sent < 0)
             {
                 printf("Could not send bytes across UNIX Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -46,7 +46,7 @@ int main()
                 }
                 else
                 {
-                    printf("Msg:\n%.*s\n", bytes_read, buffer);
+                    printf("%.*s\n", bytes_read, buffer);
                 }
             }
         }
