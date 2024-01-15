@@ -805,25 +805,52 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
 
 memory_block prepare_report(struct webspider *server)
 {
-    char spaces[] = "                                        ";
-    char squares[] = "▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮";
+    char spaces[]  = "                                        ";
+    char squares[] = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
-    struct memory_allocator__report m_report = memory_allocator__report(server->connection_allocator);
-    int n_spaces = truncate_to_int32(40.0f * m_report.used / m_report.size);
+    struct memory_allocator__report m_report1 = memory_allocator__report(server->webspider_allocator);
+    int n_spaces1 = truncate_to_int32(40.0f * m_report1.used / m_report1.size);
+
+    struct memory_allocator__report m_report2 = memory_allocator__report(server->connection_allocator);
+    int n_spaces2 = truncate_to_int32(40.0f * m_report2.used / m_report2.size);
 
     struct async_context__report q_report = async_context__report(server->async);
 
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
     string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
-    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", m_report.used, m_report.size);
+    string_builder__append_format(&sb, "webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
     string_builder__append_format(&sb, "+----------------------------------------+\n");
-    string_builder__append_format(&sb, "|%.*s|%.*s|\n", n_spaces, squares, 40 - n_spaces - 1, spaces);
+    string_builder__append_format(&sb, "|%.*s%.*s|\n", n_spaces1, squares, 40 - n_spaces1, spaces);
+    string_builder__append_format(&sb, "+----------------------------------------+\n");
+    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", m_report2.used, m_report2.size);
+    string_builder__append_format(&sb, "+----------------------------------------+\n");
+    string_builder__append_format(&sb, "|%.*s%.*s|\n", n_spaces2, squares, 40 - n_spaces2, spaces);
     string_builder__append_format(&sb, "+----------------------------------------+\n");
     string_builder__append_format(&sb, "==========================================\n");
     string_builder__append_format(&sb, "ASYNC QUEUE BUFFER:\n");
     for (int i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
     {
         queue__event_data *e = q_report.events_in_work + i;
+
+        if (e->socket_fd == 0)
+        {
+            int n_empty_entries = 0;
+            for (int j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
+            {
+                queue__event_data *q = q_report.events_in_work + i;
+
+                if (q->socket_fd == 0) n_empty_entries += 1;
+                else break;
+            }
+
+            if (n_empty_entries > 2)
+            {
+                string_builder__append_format(&sb, "...\n");
+                i += (n_empty_entries - 1);
+                continue;
+            }
+        }
+
         string_builder__append_format(&sb, "%2d)", i + 1);
         if (e->socket_fd != 0)
         {
