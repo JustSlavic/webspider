@@ -3,6 +3,7 @@
 set -e
 
 PROJECT=webspider
+STANDARD=c99
 COMPILE_COMMANDS_FILE=compile_commands.json
 
 mkdir -p bin
@@ -26,21 +27,28 @@ function build() {
         COMPILE_DB_JSON="-MJ $COMPILE_COMMANDS_FILE"
     fi
     if [ "$subcommand" = "debug" ]; then
+        # @todo: make way to remove this since I need only truncate function
+        LIBS="-lm"
         DEBUG="-DDEBUG -g3"
         WARNINGS="-Wall"
     else
+        LIBS="-lm"
         WARNINGS="-Wall -Werror"
     fi
 
     case $os_name in
         Darwin | Linux)
-            build_command="gcc code/webspider.c -o bin/$PROJECT -I code/based $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_command="gcc code/webspider.c -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
             exec $($build_command)
-            echo "[$build_command]... Success"
+            if [ $? -eq 0 ]; then
+                echo "[$build_command]... Success"
+            fi
 
-            build_command="gcc code/inspector.c -o bin/inspector -I code/based $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_command="gcc code/inspector.c -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
             exec $($build_command)
-            echo "[$build_command]... Success"
+            if [ $? -eq 0 ]; then
+                echo "[$build_command]... Success"
+            fi
 
             ;;
         *)
