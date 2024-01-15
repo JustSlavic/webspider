@@ -123,7 +123,8 @@ memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
 int accept_connection_inet(struct webspider *server, int socket_fd);
 int accept_connection_unix(struct webspider *server, int socket_fd);
-int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket);
+int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_socket);
+int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket);
 int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket);
 int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
@@ -312,7 +313,7 @@ int main()
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
                                         LOG("Incoming message event (socket %d)\n", event->socket_fd);
-                                        int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
+                                        int accept_read_result = accepted_inet_socket_ready_to_read(&server, event->socket_fd);
                                         if (accept_read_result < 0)
                                         {
                                             LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -357,7 +358,21 @@ int main()
                                     }
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
+                                        LOG("Incoming message event (socket %d)\n", event->socket_fd);
+                                        int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->socket_fd);
+                                        if (accept_read_result < 0)
+                                        {
+                                            LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        }
+
+                                        LOG("Closing incoming connection\n");
                                         close(event->socket_fd);
+
+                                        memory__set(event, 0, sizeof(queue__event_data));
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                        memory_arena__reset(server.connection_allocator);
+
+                                        memory_arena__reset(server.connection_allocator);
                                     }
                                 }
                             }
@@ -626,7 +641,7 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
     return result;
 }
 
-int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
+int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_socket)
 {
     LOGGER(server);
 
@@ -662,6 +677,57 @@ int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket)
             LOG_UNTRUSTED(buffer.memory, bytes_received);
 
             send_payload(server, accepted_socket);
+        }
+    }
+
+    return result;
+}
+
+int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket)
+{
+    LOGGER(server);
+
+    int result = 0;
+
+    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1));
+    if (buffer.memory == NULL)
+    {
+        LOG("Could not allocate 1Kb to place received message");
+    }
+    else
+    {
+        int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
+        if (bytes_received < 0)
+        {
+            LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                LOG("errno=EAGAIN or EWOULDBLOCK...\n");
+            }
+            else
+            {
+                result = -1;
+            }
+        }
+        else if (bytes_received == 0)
+        {
+            LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+        }
+        else
+        {
+            LOG("Successfully read %d bytes after the event!\n", bytes_received);
+            LOG_UNTRUSTED(buffer.memory, bytes_received);
+
+            memory_block report = prepare_memory_report(server);
+            if (report.memory != NULL)
+            {
+                int bytes_sent = send(accepted_socket, report.memory, report.size, 0);
+                if (bytes_sent < 0)
+                {
+                    LOG("Error send (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    result = -1;
+                }
+            }
         }
     }
 
