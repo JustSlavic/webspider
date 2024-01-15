@@ -34,9 +34,14 @@ function build() {
 
     case $os_name in
         Darwin | Linux)
-            build_command="gcc code/main_webspider.c -o bin/$PROJECT -I code/based $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_command="gcc code/webspider.c -o bin/$PROJECT -I code/based $WARNINGS $DEBUG $COMPILE_DB_JSON"
             exec $($build_command)
             echo "[$build_command]... Success"
+
+            build_command="gcc code/inspector.c -o bin/inspector -I code/based $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            exec $($build_command)
+            echo "[$build_command]... Success"
+
             ;;
         *)
             echo "Unrecognazied os name ($os_name)"

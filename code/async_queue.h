@@ -12,12 +12,15 @@ enum queue__event_type
     SOCKET_EVENT__INCOMING_CONNECTION = 0x1,
     SOCKET_EVENT__INCOMING_MESSAGE    = 0x2,
     SOCKET_EVENT__OUTGOING_MESSAGE    = 0x4,
+
+    QUEUE_EVENT__INET_SOCKET = 0x10000000,
+    QUEUE_EVENT__UNIX_SOCKET = 0x20000000,
 };
 typedef enum queue__event_type queue__event_type;
 
 struct queue__event_data
 {
-    queue__event_type type;
+    int event_type;
     int socket_fd;
 };
 typedef struct queue__event_data queue__event_data;
@@ -37,8 +40,13 @@ struct async_context;
 
 struct async_context *create_async_context();
 void destroy_async_context(struct async_context *context);
-int queue__register(struct async_context *context, int socket_to_register, queue__event_type type);
+int queue__register(struct async_context *context, int socket_to_register, int event_type);
 queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds);
+
+FORCE_INLINE bool32 queue_event__is(queue__event_data *event, queue__event_type t)
+{
+    return (event->event_type & t) > 0;
+}
 
 
 #endif // ASYNC_QUEUE_H

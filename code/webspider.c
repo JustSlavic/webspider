@@ -4,6 +4,7 @@
 #include <memory.h>
 #include <memory_allocator.h>
 #include <string_builder.h>
+#include <float32.h>
 
 // *nix
 #include <unistd.h>
@@ -11,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <arpa/inet.h>
 
 // Stdlib
@@ -108,6 +110,7 @@ bool is_symbol_ok(char c)
 #define BACKLOG_SIZE 32
 #define LOG_FILENAME "log.txt"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
+#define INSPECTOR_SOCKET_NAME "/tmp/webspider_unix_socket"
 
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
@@ -116,11 +119,13 @@ bool is_symbol_ok(char c)
 
 memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
-int accept_connection(struct webspider *server, int socket_fd);
+int accept_connection_inet(struct webspider *server, int socket_fd);
+int accept_connection_unix(struct webspider *server, int socket_fd);
 int accepted_socket_ready_to_read(struct webspider *server, int accepted_socket);
 int accepted_socket_ready_to_write(struct webspider *server, int accepted_socket);
 int send_payload(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
+memory_block prepare_memory_report(struct webspider *server);
 
 
 GLOBAL volatile bool running;
@@ -162,6 +167,62 @@ int main()
         return EXIT_FAILURE;
     }
 
+    server.socket_for_inspector = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server.socket_for_inspector < 0)
+    {
+        LOG("Could not create socket for interprocess communication, run server without inspector\n");
+    }
+    else
+    {
+        int nonblock_result = make_socket_nonblocking(server.socket_fd);
+        if (nonblock_result < 0)
+        {
+            LOG("Error: make_socket_nonblocking\n");
+        }
+        else
+        {
+            struct sockaddr_un name = {
+                .sun_family = AF_UNIX,
+                .sun_path = INSPECTOR_SOCKET_NAME,
+            };
+
+            int bind_result = bind(server.socket_for_inspector, (struct sockaddr const *) &name, sizeof(name));
+            if (bind_result < 0)
+            {
+                if (errno == EADDRINUSE)
+                {
+                    unlink(INSPECTOR_SOCKET_NAME);
+                    bind_result = bind(server.socket_for_inspector, (struct sockaddr const *) &name, sizeof(name));
+                }
+            }
+
+            if (bind_result < 0)
+            {
+                LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+            }
+            else
+            {
+                int listen_result = listen(server.socket_for_inspector, BACKLOG_SIZE);
+                if (listen_result < 0)
+                {
+                    LOG("Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
+                }
+                else
+                {
+                    int register_result = queue__register(server.async, server.socket_for_inspector,
+                        SOCKET_EVENT__INCOMING_CONNECTION | QUEUE_EVENT__UNIX_SOCKET);
+                    if (register_result < 0)
+                    {
+                        if (register_result == -2)
+                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                        if (register_result == -1)
+                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    }
+                }
+            }
+        }
+    }
+
     server.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server.socket_fd < 0)
     {
@@ -183,20 +244,20 @@ int main()
                 .sin_addr.s_addr = IP4_ANY,
             };
 
-            int bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
+            int bind_result = bind(server.socket_fd, (struct sockaddr const *) &address, sizeof(address));
             if (bind_result < 0)
             {
                 if (errno == EADDRINUSE)
                 {
                     int reuse = 1;
                     setsockopt(server.socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-                    bind_result = bind(server.socket_fd, (const struct sockaddr *) &address, sizeof(address));
+                    bind_result = bind(server.socket_fd, (struct sockaddr const *) &address, sizeof(address));
                 }
             }
 
             if (bind_result < 0)
             {
-                LOG("Error bind (errno: %d - \"%s\")\n", errno, strerror(errno));
+                LOG("Error bind Internet Protocol Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
             }
             else
             {
@@ -207,7 +268,8 @@ int main()
                 }
                 else
                 {
-                    int register_result = queue__register(server.async, server.socket_fd, SOCKET_EVENT__INCOMING_CONNECTION);
+                    int register_result = queue__register(server.async, server.socket_fd,
+                        SOCKET_EVENT__INCOMING_CONNECTION | QUEUE_EVENT__INET_SOCKET);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -232,48 +294,69 @@ int main()
                             else if (wait_result.event_count > 0)
                             {
                                 queue__event_data *event = wait_result.events;
-                                if (event->type == SOCKET_EVENT__INCOMING_CONNECTION)
+                                if (queue_event__is(event, QUEUE_EVENT__INET_SOCKET))
                                 {
-                                    LOG("Incoming connection event...\n");
-                                    int accept_connection_result = accept_connection(&server, server.socket_fd);
-                                    if (accept_connection_result < 0)
+                                    if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
-                                        LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
-                                    }
+                                        LOG("Incoming connection event...\n");
+                                        int accept_connection_result = accept_connection_inet(&server, event->socket_fd);
+                                        if (accept_connection_result < 0)
+                                        {
+                                            LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        }
 
-                                    memory_arena__reset(server.connection_allocator);
+                                        memory_arena__reset(server.connection_allocator);
+                                    }
+                                    else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
+                                    {
+                                        LOG("Incoming message event (socket %d)\n", event->socket_fd);
+                                        int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
+                                        if (accept_read_result < 0)
+                                        {
+                                            LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        }
+
+                                        LOG("Closing incoming connection\n");
+                                        close(event->socket_fd);
+
+                                        memory__set(event, 0, sizeof(queue__event_data));
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                        memory_arena__reset(server.connection_allocator);
+                                    }
+                                    else if (queue_event__is(event, SOCKET_EVENT__OUTGOING_MESSAGE))
+                                    {
+                                        LOG("Outgoing message event (socket %d)\n", event->socket_fd);
+                                        int accept_write_result = accepted_socket_ready_to_write(&server, event->socket_fd);
+                                        if (accept_write_result < 0)
+                                        {
+                                            LOG("Could not write to the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        }
+
+                                        LOG("Closing incoming connection\n");
+                                        close(event->socket_fd);
+
+                                        memory__set(event, 0, sizeof(queue__event_data));
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                        memory_arena__reset(server.connection_allocator);
+                                    }
                                 }
-                                else if (event->type & SOCKET_EVENT__INCOMING_MESSAGE)
+                                else if (queue_event__is(event, QUEUE_EVENT__UNIX_SOCKET))
                                 {
-                                    LOG("Incoming message event (socket %d)\n", event->socket_fd);
-                                    int accept_read_result = accepted_socket_ready_to_read(&server, event->socket_fd);
-                                    if (accept_read_result < 0)
+                                    if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
-                                        LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        LOG("Incoming connection event...\n");
+                                        int accept_connection_result = accept_connection_unix(&server, event->socket_fd);
+                                        if (accept_connection_result < 0)
+                                        {
+                                            LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        }
+
+                                        memory_arena__reset(server.connection_allocator);
                                     }
-
-                                    LOG("Closing incoming connection\n");
-                                    close(event->socket_fd);
-
-                                    memory__set(event, 0, sizeof(queue__event_data));
-                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                                    memory_arena__reset(server.connection_allocator);
-                                }
-                                else if (event->type & SOCKET_EVENT__OUTGOING_MESSAGE)
-                                {
-                                    LOG("Outgoing message event (socket %d)\n", event->socket_fd);
-                                    int accept_write_result = accepted_socket_ready_to_write(&server, event->socket_fd);
-                                    if (accept_write_result < 0)
+                                    else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
-                                        LOG("Could not write to the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                        close(event->socket_fd);
                                     }
-
-                                    LOG("Closing incoming connection\n");
-                                    close(event->socket_fd);
-
-                                    memory__set(event, 0, sizeof(queue__event_data));
-                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                                    memory_arena__reset(server.connection_allocator);
                                 }
                             }
                         }
@@ -284,6 +367,12 @@ int main()
 
         LOG("Closing server socket (%d)\n", server.socket_fd);
         close(server.socket_fd);
+    }
+
+    unlink(INSPECTOR_SOCKET_NAME);
+    if (server.socket_for_inspector > 0)
+    {
+        close(server.socket_for_inspector);
     }
 
     destroy_async_context(server.async);
@@ -349,7 +438,7 @@ int make_socket_nonblocking(int fd)
     return result;
 }
 
-int accept_connection(struct webspider *server, int socket_fd)
+int accept_connection_inet(struct webspider *server, int socket_fd)
 {
     LOGGER(server);
 
@@ -399,7 +488,8 @@ int accept_connection(struct webspider *server, int socket_fd)
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                     {
                         LOG("Register socket %d to the read messages\n", accepted_socket);
-                        int register_result = queue__register(server->async, accepted_socket, SOCKET_EVENT__INCOMING_MESSAGE);
+                        int register_result = queue__register(server->async, accepted_socket,
+                            SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__INET_SOCKET);
                         if (register_result < 0)
                         {
                             if (register_result == -2)
@@ -428,6 +518,101 @@ int accept_connection(struct webspider *server, int socket_fd)
                     LOG_UNTRUSTED(buffer.memory, bytes_received);
 
                     send_payload(server, accepted_socket);
+
+                    LOG("Closing incoming connection\n");
+                    close(accepted_socket);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+int accept_connection_unix(struct webspider *server, int socket_fd)
+{
+    LOGGER(server);
+
+    int result = 0;
+
+    struct sockaddr accepted_address;
+    socklen_t accepted_address_size = sizeof(accepted_address);
+
+    int accepted_socket = accept(socket_fd, &accepted_address, &accepted_address_size);
+    if (accepted_socket < 0)
+    {
+        LOG("Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
+        result = -1;
+    }
+    else
+    {
+        LOG("Accepted connection (socket: %d) from \"%.s\"\n",
+            accepted_socket, ((struct sockaddr_un *) &accepted_address)->sun_path);
+
+        int nonblock_accepted_socket_result = make_socket_nonblocking(accepted_socket);
+        if (nonblock_accepted_socket_result < 0)
+        {
+            LOG("Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
+            result = -1;
+        }
+        else
+        {
+            memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1));
+            if (buffer.memory == NULL)
+            {
+                LOG("Could not allocate 1Kb to place received message");
+                LOG("Closing incoming connection\n");
+                close(accepted_socket);
+            }
+            else
+            {
+                int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
+                if (bytes_received < 0)
+                {
+                    LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
+
+                    if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    {
+                        LOG("Register socket %d to the read messages\n", accepted_socket);
+                        int register_result = queue__register(server->async, accepted_socket,
+                            SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__UNIX_SOCKET);
+                        if (register_result < 0)
+                        {
+                            if (register_result == -2)
+                                LOG("Error coult not add to the async queue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            if (register_result == -1)
+                                LOG("Error queue__register (errno: %d - \"%s\")\n", errno, strerror(errno));
+
+                            result = -1;
+                            LOG("Closing incoming connection\n");
+                            close(accepted_socket);
+                        }
+                        else
+                        {
+                            LOG("Added to async queue\n");
+                        }
+                    }
+                    else
+                    {
+                        LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        result = -1;
+                    }
+                }
+                else
+                {
+                    LOG("Successfully read %d bytes immediately!\n", bytes_received);
+                    LOG_UNTRUSTED(buffer.memory, bytes_received);
+
+                    memory_block report = prepare_memory_report(server);
+                    if (report.memory != NULL)
+                    {
+                        int bytes_sent = send(accepted_socket, report.memory, report.size, 0);
+                        if (bytes_sent < 0)
+                        {
+                            LOG("Error send (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            result = -1;
+                        }
+                    }
 
                     LOG("Closing incoming connection\n");
                     close(accepted_socket);
@@ -546,6 +731,24 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
     }
 
     return string_builder__get_string(sb);
+}
+
+memory_block prepare_memory_report(struct webspider *server)
+{
+    char spaces[] = "                                        ";
+    char squares[] = "▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮";
+    string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
+
+    struct memory_allocator__report report = memory_allocator__report(server->connection_allocator);
+    int n_spaces = truncate_to_int32(40.0f * report.used / report.size);
+
+    string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
+    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", report.used, report.size);
+    string_builder__append_format(&sb, "+----------------------------------------+\n");
+    string_builder__append_format(&sb, "|%.*s|%.*s|\n", n_spaces, squares, 40 - n_spaces - 1, spaces);
+    string_builder__append_format(&sb, "+----------------------------------------+\n");
+
+    return string_builder__get_string(&sb);
 }
 
 

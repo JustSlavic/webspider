@@ -25,17 +25,17 @@ void destroy_async_context(struct async_context *context)
     free(context);
 }
 
-int queue__register(struct async_context *context, int socket_to_register, queue__event_type type)
+int queue__register(struct async_context *context, int socket_to_register, int event_type)
 {
     int result = -2;
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
         queue__event_data *event = context->registered_events + i;
-        if (event->type == QUEUE_EVENT__NONE)
+        if (event->event_type == QUEUE_EVENT__NONE)
         {
-            bool to_read  = (type & SOCKET_EVENT__INCOMING_CONNECTION) != 0 ||
-                            (type & SOCKET_EVENT__INCOMING_MESSAGE) != 0;
-            bool to_write = (type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0;
+            bool to_read  = (event_type & SOCKET_EVENT__INCOMING_CONNECTION) != 0 ||
+                            (event_type & SOCKET_EVENT__INCOMING_MESSAGE) != 0;
+            bool to_write = (event_type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0;
 
             struct kevent reg_events[2] = {}; // 0 - read, 1 - write
             EV_SET(&reg_events[0], socket_to_register, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, event);
@@ -54,7 +54,7 @@ int queue__register(struct async_context *context, int socket_to_register, queue
             }
             else
             {
-                event->type = type;
+                event->event_type = event_type;
                 event->socket_fd = socket_to_register;
             }
             break;
