@@ -291,14 +291,17 @@ int main()
                         running = true;
                         while(running)
                         {
-                            queue__waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT);
+                            queue__waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT); // timeout in milliseconds
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
                                 {
-                                    LOG("Could not receive events (%d) (errno: %d - \"%s\")\n", wait_result.error_code, errno, strerror(errno));
+                                    LOG("Could not receive events (return code: %d) (errno: %d - \"%s\")\n", wait_result.error_code, errno, strerror(errno));
                                 }
-                                // @todo: pruning
+                            }
+                            else if (wait_result.event_count == 0)
+                            {
+                                queue__prune(server.async, 50000); // timeout in microseconds
                             }
                             else if (wait_result.event_count > 0)
                             {
@@ -851,6 +854,10 @@ memory_block prepare_report(struct webspider *server)
 
     float32 connections_per_second = (float32) 1000000.0f * connections_counted / (max_time - min_time);
 
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
+
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
     string_builder__append_format(&sb, "Connections done:\n    %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
     string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
@@ -868,14 +875,14 @@ memory_block prepare_report(struct webspider *server)
     {
         queue__event_data *e = q_report.events_in_work + i;
 
-        if (e->socket_fd == 0)
+        if (e->event_type == 0)
         {
             int n_empty_entries = 0;
             for (int j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
             {
                 queue__event_data *q = q_report.events_in_work + i;
 
-                if (q->socket_fd == 0) n_empty_entries += 1;
+                if (q->event_type == 0) n_empty_entries += 1;
                 else break;
             }
 
@@ -902,10 +909,11 @@ memory_block prepare_report(struct webspider *server)
                 e->event_type == 0 ? "" :
                 queue_event__is(e, QUEUE_EVENT__INET_SOCKET) ? "INET" : "UNIX",
                 e->event_type == 0 ? "" :
-                queue_event__is(e, SOCKET_EVENT__INCOMING_CONNECTION) ? "CONNECTIONS" :
+                queue_event__is(e, SOCKET_EVENT__INCOMING_CONNECTION) ? "CONNECTIONS " :
                 queue_event__is(e, SOCKET_EVENT__INCOMING_MESSAGE) ? "INCOMING MSG" : "OUTGOING MSG");
         }
-        string_builder__append_format(&sb, "\n");
+        float32 dt = (float32) (now - e->timestamp) / 1000000.f;
+        string_builder__append_format(&sb, " %10.2fs ago\n", dt);
     }
     string_builder__append_format(&sb, "==========================================\n");
 

@@ -22,6 +22,7 @@ struct queue__event_data
 {
     int event_type;
     int socket_fd;
+    uint64 timestamp;
 };
 typedef struct queue__event_data queue__event_data;
 
@@ -42,6 +43,7 @@ struct async_context *create_async_context();
 void destroy_async_context(struct async_context *context);
 int queue__register(struct async_context *context, int socket_to_register, int event_type);
 queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds);
+void queue__prune(struct async_context *context, uint64 microseconds);
 
 FORCE_INLINE bool32 queue_event__is(queue__event_data *event, queue__event_type t)
 {

@@ -22,6 +22,13 @@ fi
 
 os_name=$(uname -s)
 
+function build_() {
+    $($1)
+    if [ $? -eq 0 ]; then
+        echo "[$1]... Success"
+    fi
+}
+
 function build() {
     if [ "$command" = "pvs-analyze" ]; then
         COMPILE_DB_JSON="-MJ $COMPILE_COMMANDS_FILE"
@@ -38,17 +45,14 @@ function build() {
 
     case $os_name in
         Darwin | Linux)
-            build_command="gcc code/webspider.c -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
-            exec $($build_command)
-            if [ $? -eq 0 ]; then
-                echo "[$build_command]... Success"
-            fi
+            build_webspider="gcc code/webspider.c -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_ "$build_webspider"
 
-            build_command="gcc code/inspector.c -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
-            exec $($build_command)
-            if [ $? -eq 0 ]; then
-                echo "[$build_command]... Success"
-            fi
+            build_inspector="gcc code/inspector.c -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_ "$build_inspector"
+
+            build_fuzzer="gcc code/test_client.c -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_ "$build_fuzzer"
 
             ;;
         *)
