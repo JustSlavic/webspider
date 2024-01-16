@@ -301,7 +301,9 @@ int main()
                             }
                             else if (wait_result.event_count == 0)
                             {
-                                queue__prune(server.async, 50000); // timeout in microseconds
+                                LOG("Pruning...\n");
+                                int pruned_connections = queue__prune(server.async, 50000); // timeout in microseconds
+                                LOG("Pruned %d connections\n", pruned_connections);
                             }
                             else if (wait_result.event_count > 0)
                             {
