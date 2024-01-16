@@ -51,7 +51,7 @@ function build() {
             build_inspector="gcc code/inspector.c -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
             build_ "$build_inspector"
 
-            build_fuzzer="gcc code/test_client.c -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_fuzzer="gcc code/fuzzer.c -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_fuzzer"
 
             ;;
