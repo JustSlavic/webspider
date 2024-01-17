@@ -30,6 +30,7 @@
 // Project-specific
 #include "webspider.h"
 #include "async_queue.h"
+#include "http.h"
 
 
 const char payload_template[] =
@@ -148,6 +149,8 @@ int main()
     signal(SIGINT, signal__SIGINT);
 
     usize memory_size = MEGABYTES(10);
+    usize memory_for_connection_size = MEGABYTES(1);
+
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
     memory_block global_memory = { .memory = memory, .size = memory_size };
@@ -157,7 +160,7 @@ int main()
         .async = NULL,
 
         .webspider_allocator = make_memory_arena(global_memory),
-        .connection_allocator = allocate_memory_arena(server.webspider_allocator, MEGABYTES(1)),
+        .connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size),
     };
 
     struct logger logger_ = {
@@ -168,6 +171,9 @@ int main()
     };
     server.logger = &logger_;
     LOGGER(&server);
+
+    LOG("-------------------------------------");
+    LOG("Staring initialization...\n");
 
     server.async = create_async_context();
     if (server.async == NULL)
@@ -301,6 +307,10 @@ int main()
                     }
                     else
                     {
+                        LOG("Successfully started webspider version 0.0.0\n");
+                        LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection\n", memory_size / 1000000.f, memory_for_connection_size / 1000000.f);
+                        LOG("-------------- WELCOME --------------");
+
                         running = true;
                         while(running)
                         {
@@ -999,7 +1009,8 @@ memory_block prepare_report(struct webspider *server)
 
 #include <memory_allocator.c>
 #include <string_builder.c>
-#include "logger.c"
+#include <logger.c>
+#include "http.c"
 
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.c"

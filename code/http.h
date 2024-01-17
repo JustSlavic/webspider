@@ -17,6 +17,7 @@ struct http_request
 {
     enum http_request_type type;
 };
+typedef struct http_request http_request;
 
 enum http_response_code
 {
@@ -29,6 +30,14 @@ struct http_response
 {
     enum http_response_code code;
 };
+typedef struct http_response http_response;
+
+
+memory_block http_request_to_blob(http_request);
+memory_block http_response_to_blob(http_response);
+
+http_request http_request_from_blob(memory_block);
+http_response http_response_from_blob(memory_block);
 
 
 #endif // HTTP_H
