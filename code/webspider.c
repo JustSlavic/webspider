@@ -173,6 +173,7 @@ int main()
     if (server.async == NULL)
     {
         LOG("Error async queue\n");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         return EXIT_FAILURE;
     }
 
@@ -180,6 +181,7 @@ int main()
     if (server.socket_for_inspector < 0)
     {
         LOG("Could not create socket for interprocess communication, run server without inspector\n");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
     }
     else
     {
@@ -187,6 +189,7 @@ int main()
         if (nonblock_result < 0)
         {
             LOG("Error: make_socket_nonblocking\n");
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         }
         else
         {
@@ -208,6 +211,7 @@ int main()
             if (bind_result < 0)
             {
                 LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
             else
             {
@@ -215,6 +219,7 @@ int main()
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 }
                 else
                 {
@@ -224,8 +229,10 @@ int main()
                     {
                         if (register_result == -2)
                             LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         if (register_result == -1)
                             LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     }
                 }
             }
@@ -236,6 +243,7 @@ int main()
     if (server.socket_fd < 0)
     {
         LOG("Error socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         return EXIT_FAILURE;
     }
     else
@@ -244,6 +252,7 @@ int main()
         if (nonblock_result < 0)
         {
             LOG("Error: make_socket_nonblocking\n");
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         }
         else
         {
@@ -267,6 +276,7 @@ int main()
             if (bind_result < 0)
             {
                 LOG("Error bind Internet Protocol Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
             else
             {
@@ -274,6 +284,7 @@ int main()
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 }
                 else
                 {
@@ -283,8 +294,10 @@ int main()
                     {
                         if (register_result == -2)
                             LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         if (register_result == -1)
                             LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     }
                     else
                     {
@@ -297,6 +310,7 @@ int main()
                                 if (errno != EINTR)
                                 {
                                     LOG("Could not receive events (return code: %d) (errno: %d - \"%s\")\n", wait_result.error_code, errno, strerror(errno));
+                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                 }
                             }
                             else if (wait_result.event_count == 0)
@@ -304,6 +318,7 @@ int main()
                                 int pruned_connections = queue__prune(server.async, 50000); // timeout in microseconds
                                 if (pruned_connections > 0)
                                     LOG("Pruned %d connections\n", pruned_connections);
+                                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             }
                             else if (wait_result.event_count > 0)
                             {
@@ -313,6 +328,7 @@ int main()
                                     if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
                                         LOG("Incoming connection event...\n");
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         {
                                             uint32 index = (connections_time_ring_buffer_index++);
                                             if (connections_time_ring_buffer_index > ARRAY_COUNT(connections_time_ring_buffer))
@@ -328,6 +344,7 @@ int main()
                                         if (accept_connection_result < 0)
                                         {
                                             LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
                                         connections_done += 1;
@@ -336,13 +353,16 @@ int main()
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
                                         LOG("Incoming message event (socket %d)\n", event->socket_fd);
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         int accept_read_result = accepted_inet_socket_ready_to_read(&server, event->socket_fd);
                                         if (accept_read_result < 0)
                                         {
                                             LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
                                         LOG("Closing incoming connection\n");
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
                                         memory__set(event, 0, sizeof(queue__event_data));
@@ -352,13 +372,16 @@ int main()
                                     else if (queue_event__is(event, SOCKET_EVENT__OUTGOING_MESSAGE))
                                     {
                                         LOG("Outgoing message event (socket %d)\n", event->socket_fd);
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         int accept_write_result = accepted_socket_ready_to_write(&server, event->socket_fd);
                                         if (accept_write_result < 0)
                                         {
                                             LOG("Could not write to the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
                                         LOG("Closing incoming connection\n");
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
                                         memory__set(event, 0, sizeof(queue__event_data));
@@ -371,10 +394,12 @@ int main()
                                     if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
                                         LOG("Incoming connection event...\n");
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         int accept_connection_result = accept_connection_unix(&server, event->socket_fd);
                                         if (accept_connection_result < 0)
                                         {
                                             LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
                                         memory_arena__reset(server.connection_allocator);
@@ -382,13 +407,16 @@ int main()
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
                                         LOG("Incoming message event (socket %d)\n", event->socket_fd);
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->socket_fd);
                                         if (accept_read_result < 0)
                                         {
                                             LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
                                         LOG("Closing incoming connection\n");
+                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
                                         memory__set(event, 0, sizeof(queue__event_data));
@@ -406,6 +434,7 @@ int main()
         }
 
         LOG("Closing server socket (%d)\n", server.socket_fd);
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         close(server.socket_fd);
     }
 
@@ -491,6 +520,7 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
     if (accepted_socket < 0)
     {
         LOG("Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         result = -1;
     }
     else
@@ -502,11 +532,13 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
             (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 16) & 0xff,
             (((struct sockaddr_in *) &accepted_address)->sin_addr.s_addr >> 24) & 0xff,
             uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
         int nonblock_accepted_socket_result = make_socket_nonblocking(accepted_socket);
         if (nonblock_accepted_socket_result < 0)
         {
             LOG("Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             result = -1;
         }
         else
@@ -515,7 +547,9 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
             if (buffer.memory == NULL)
             {
                 LOG("Could not allocate 16Kb to place received message");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 LOG("Closing incoming connection\n");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 close(accepted_socket);
             }
             else
@@ -524,42 +558,51 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
                 if (bytes_received < 0)
                 {
                     LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                     {
                         LOG("Register socket %d to the read messages\n", accepted_socket);
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         int register_result = queue__register(server->async, accepted_socket,
                             SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__INET_SOCKET);
                         if (register_result < 0)
                         {
                             if (register_result == -2)
                                 LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             if (register_result == -1)
                                 LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
                             result = -1;
                             LOG("Closing incoming connection\n");
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             close(accepted_socket);
                         }
                         else
                         {
                             LOG("Added to async queue\n");
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         }
                     }
                     else
                     {
                         LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         result = -1;
                     }
                 }
                 else
                 {
                     LOG("Successfully read %d bytes immediately!\n", bytes_received);
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     LOG_UNTRUSTED(buffer.memory, bytes_received);
 
                     send_payload(server, accepted_socket);
 
                     LOG("Closing incoming connection\n");
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     close(accepted_socket);
                 }
             }
@@ -582,17 +625,20 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
     if (accepted_socket < 0)
     {
         LOG("Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         result = -1;
     }
     else
     {
         LOG("Accepted connection (socket: %d) from \"%.s\"\n",
             accepted_socket, ((struct sockaddr_un *) &accepted_address)->sun_path);
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
         int nonblock_accepted_socket_result = make_socket_nonblocking(accepted_socket);
         if (nonblock_accepted_socket_result < 0)
         {
             LOG("Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             result = -1;
         }
         else
@@ -601,7 +647,9 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
             if (buffer.memory == NULL)
             {
                 LOG("Could not allocate 1Kb to place received message");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 LOG("Closing incoming connection\n");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 close(accepted_socket);
             }
             else
@@ -610,37 +658,45 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
                 if (bytes_received < 0)
                 {
                     LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                     {
                         LOG("Register socket %d to the read messages\n", accepted_socket);
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         int register_result = queue__register(server->async, accepted_socket,
                             SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__UNIX_SOCKET);
                         if (register_result < 0)
                         {
                             if (register_result == -2)
                                 LOG("Error coult not add to the async queue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             if (register_result == -1)
                                 LOG("Error queue__register (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
                             result = -1;
                             LOG("Closing incoming connection\n");
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             close(accepted_socket);
                         }
                         else
                         {
                             LOG("Added to async queue\n");
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         }
                     }
                     else
                     {
                         LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
+                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                         result = -1;
                     }
                 }
                 else
                 {
                     LOG("Successfully read %d bytes immediately!\n", bytes_received);
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     LOG_UNTRUSTED(buffer.memory, bytes_received);
 
                     memory_block report = prepare_report(server);
@@ -650,11 +706,13 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
                         if (bytes_sent < 0)
                         {
                             LOG("Error send (errno: %d - \"%s\")\n", errno, strerror(errno));
+                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             result = -1;
                         }
                     }
 
                     LOG("Closing incoming connection\n");
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     close(accepted_socket);
                 }
             }
@@ -674,6 +732,7 @@ int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_so
     if (buffer.memory == NULL)
     {
         LOG("Could not allocate 16Kb to place received message");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
     }
     else
     {
@@ -681,9 +740,11 @@ int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_so
         if (bytes_received < 0)
         {
             LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 LOG("errno=EAGAIN or EWOULDBLOCK...\n");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
             else
             {
@@ -693,10 +754,12 @@ int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_so
         else if (bytes_received == 0)
         {
             LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         }
         else
         {
             LOG("Successfully read %d bytes after the event!\n", bytes_received);
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             LOG_UNTRUSTED(buffer.memory, bytes_received);
 
             send_payload(server, accepted_socket);
@@ -716,6 +779,7 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
     if (buffer.memory == NULL)
     {
         LOG("Could not allocate 1Kb to place received message");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
     }
     else
     {
@@ -723,9 +787,11 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
         if (bytes_received < 0)
         {
             LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 LOG("errno=EAGAIN or EWOULDBLOCK...\n");
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
             else
             {
@@ -735,10 +801,12 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
         else if (bytes_received == 0)
         {
             LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
         }
         else
         {
             LOG("Successfully read %d bytes after the event!\n", bytes_received);
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             LOG_UNTRUSTED(buffer.memory, bytes_received);
 
             memory_block report = prepare_report(server);
@@ -748,6 +816,7 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
                 if (bytes_sent < 0)
                 {
                     LOG("Error send (errno: %d - \"%s\")\n", errno, strerror(errno));
+                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     result = -1;
                 }
             }
@@ -772,6 +841,7 @@ int send_payload(struct webspider *server, int accepted_socket)
     if (response_buffer.memory == NULL)
     {
         LOG("Could not allocate 32Kb to place http response");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
     }
     else
     {
@@ -784,6 +854,7 @@ int send_payload(struct webspider *server, int accepted_socket)
         if (payload.memory == NULL)
         {
             LOG("Failed to make http response in memory\n");
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             result = -1;
         }
         else
@@ -792,11 +863,13 @@ int send_payload(struct webspider *server, int accepted_socket)
             if (bytes_sent < 0)
             {
                 LOG("Could not send anything back (errno: %d - \"%s\")\n", errno, strerror(errno));
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 result = -1;
             }
             else
             {
                 LOG("Sent back %d bytes of http\n", bytes_sent);
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
         }
     }
@@ -814,6 +887,7 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
     if (file.memory == NULL)
     {
         LOG("Could not load file \"%s\"", filename);
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
     }
     else
     {

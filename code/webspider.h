@@ -2,6 +2,7 @@
 #define WEBSPIDER_H
 
 #include <base.h>
+#include <array.h>
 #include <logger.h>
 #include "async_queue.h"
 
@@ -17,6 +18,8 @@ struct webspider
     memory_allocator connection_allocator;
 
     struct logger *logger;
+
+    // array(uint32) ip_ban_list;
 };
 
 
