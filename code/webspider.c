@@ -172,7 +172,7 @@ int main()
     server.logger = &logger_;
     LOGGER(&server);
 
-    LOG("-------------------------------------");
+    LOG("-------------------------------------\n");
     LOG("Staring initialization...\n");
 
     server.async = create_async_context();
