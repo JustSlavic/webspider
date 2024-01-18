@@ -309,7 +309,7 @@ int main()
                     {
                         LOG("Successfully started webspider version 0.0.0\n");
                         LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection\n", memory_size / 1000000.f, memory_for_connection_size / 1000000.f);
-                        LOG("-------------- WELCOME --------------");
+                        LOG("-------------- WELCOME --------------\n");
 
                         running = true;
                         while(running)
