@@ -57,6 +57,50 @@ const char payload_500[] =
 "</html>\n"
 ;
 
+
+int socket_inet__bind(int fd, uint32 ip4, uint16 port)
+{
+    struct sockaddr_in address = {
+        .sin_family      = AF_INET,
+        .sin_port        = uint16__change_endianness(port),
+        .sin_addr.s_addr = ip4,
+    };
+
+    int bind_result = bind(fd, (struct sockaddr const *) &address, sizeof(address));
+    if (bind_result < 0)
+    {
+        if (errno == EADDRINUSE)
+        {
+            int reuse = 1;
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            bind_result = bind(fd, (struct sockaddr const *) &address, sizeof(address));
+        }
+    }
+
+    return bind_result;
+}
+
+int socket_unix__bind(int fd, char const *filename)
+{
+    struct sockaddr_un name = {
+        .sun_family = AF_UNIX
+    };
+    memory__copy(name.sun_path, filename, cstring__size_with0(filename));
+
+    int bind_result = bind(fd, (struct sockaddr const *) &name, sizeof(name));
+    if (bind_result < 0)
+    {
+        if (errno == EADDRINUSE)
+        {
+            unlink(filename);
+            bind_result = bind(fd, (struct sockaddr const *) &name, sizeof(name));
+        }
+    }
+
+    return bind_result;
+}
+
+
 bool is_symbol_ok(char c)
 {
     return (('0' <= c) && (c <= '9')) ||
@@ -90,7 +134,7 @@ bool is_symbol_ok(char c)
         if (is_symbol_ok(c)) \
             printf("%c", c); \
         else \
-            printf("\\0x%x", (int) c); \
+            printf("\\0x%x", (int) (c & 0xff)); \
     } \
     printf("\n"); \
     } while (0)
@@ -105,7 +149,7 @@ bool is_symbol_ok(char c)
         if (is_symbol_ok(c)) \
             string_builder__append_format(&logger->sb, "%c", c); \
         else \
-            string_builder__append_format(&logger->sb, "\\0x%x", (int) c); \
+            string_builder__append_format(&logger->sb, "\\0x%x", (int) (c & 0xff)); \
     } \
     string_builder__append_format(&logger->sb, "\n"); \
     } while (0)
@@ -199,21 +243,7 @@ int main()
         }
         else
         {
-            struct sockaddr_un name = {
-                .sun_family = AF_UNIX,
-                .sun_path = INSPECTOR_SOCKET_NAME,
-            };
-
-            int bind_result = bind(server.socket_for_inspector, (struct sockaddr const *) &name, sizeof(name));
-            if (bind_result < 0)
-            {
-                if (errno == EADDRINUSE)
-                {
-                    unlink(INSPECTOR_SOCKET_NAME);
-                    bind_result = bind(server.socket_for_inspector, (struct sockaddr const *) &name, sizeof(name));
-                }
-            }
-
+            int bind_result = socket_unix__bind(server.socket_for_inspector, INSPECTOR_SOCKET_NAME);
             if (bind_result < 0)
             {
                 LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -262,23 +292,7 @@ int main()
         }
         else
         {
-            struct sockaddr_in address = {
-                .sin_family      = AF_INET,
-                .sin_port        = uint16__change_endianness(80),
-                .sin_addr.s_addr = IP4_ANY,
-            };
-
-            int bind_result = bind(server.socket_fd, (struct sockaddr const *) &address, sizeof(address));
-            if (bind_result < 0)
-            {
-                if (errno == EADDRINUSE)
-                {
-                    int reuse = 1;
-                    setsockopt(server.socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-                    bind_result = bind(server.socket_fd, (struct sockaddr const *) &address, sizeof(address));
-                }
-            }
-
+            int bind_result = socket_inet__bind(server.socket_fd, IP4_ANY, 80);
             if (bind_result < 0)
             {
                 LOG("Error bind Internet Protocol Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
