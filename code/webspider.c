@@ -58,6 +58,15 @@ const char payload_500[] =
 ;
 
 
+struct socket__receive_result
+{
+    bool have_to_wait;
+    memory_block buffer;
+    http_request request;
+};
+typedef struct socket__receive_result socket__receive_result;
+
+
 int socket_inet__bind(int fd, uint32 ip4, uint16 port)
 {
     struct sockaddr_in address = {
@@ -170,6 +179,7 @@ bool is_symbol_ok(char c)
 memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
 int accept_connection_inet(struct webspider *server, int socket_fd);
+socket__receive_result socket__receive_request(struct webspider *server, int accepted_socket);
 int accept_connection_unix(struct webspider *server, int socket_fd);
 int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_socket);
 int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket);
@@ -351,8 +361,6 @@ int main()
                                 {
                                     if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
-                                        LOG("Incoming connection event...\n");
-                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         {
                                             uint32 index = (connections_time_ring_buffer_index++);
                                             if (connections_time_ring_buffer_index > ARRAY_COUNT(connections_time_ring_buffer))
@@ -364,28 +372,59 @@ int main()
                                             connections_time_ring_buffer[index] = 1000000LLU * tv.tv_sec + tv.tv_usec;
                                         }
 
-                                        int accept_connection_result = accept_connection_inet(&server, event->socket_fd);
-                                        if (accept_connection_result < 0)
+                                        int accepted_socket = accept_connection_inet(&server, event->socket_fd);
+                                        if (accepted_socket >= 0)
                                         {
-                                            LOG("Could not accept connection (errno: %d - \"%s\")\n", errno, strerror(errno));
-                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                            socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
+                                            if (receive_result.have_to_wait)
+                                            {
+                                                LOG("Register socket %d to the read messages\n", accepted_socket);
+                                                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+
+                                                int register_result = queue__register(server.async, accepted_socket,
+                                                    SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__INET_SOCKET);
+                                                if (register_result < 0)
+                                                {
+                                                    if (register_result == -2) LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
+                                                    if (register_result == -1) LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
+                                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+
+                                                    LOG("close (socket: %d)\n", accepted_socket);
+                                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+
+                                                    close(accepted_socket);
+                                                }
+                                                else
+                                                {
+                                                    LOG("Added to async queue\n");
+                                                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                                }
+                                            }
+                                            else if (receive_result.request.type == HTTP__GET)
+                                            {
+                                                send_payload(&server, accepted_socket);
+
+                                                connections_done += 1;
+
+                                                LOG("close (socket: %d)\n", accepted_socket);
+                                                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+
+                                                close(accepted_socket);
+                                            }
                                         }
 
-                                        connections_done += 1;
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                     else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
                                     {
                                         LOG("Incoming message event (socket %d)\n", event->socket_fd);
-                                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                                        int accept_read_result = accepted_inet_socket_ready_to_read(&server, event->socket_fd);
-                                        if (accept_read_result < 0)
+                                        socket__receive_result receive_result = socket__receive_request(&server, event->socket_fd);
+                                        if (receive_result.request.type == HTTP__GET)
                                         {
-                                            LOG("Could not read from the socket (errno: %d - \"%s\")\n", errno, strerror(errno));
-                                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+                                            send_payload(&server, event->socket_fd);
                                         }
 
-                                        LOG("Closing incoming connection\n");
+                                        LOG("close (socket: %d)\n", event->socket_fd);
                                         logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
@@ -404,7 +443,7 @@ int main()
                                             logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
-                                        LOG("Closing incoming connection\n");
+                                        LOG("close (socket: %d)\n", event->socket_fd);
                                         logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
@@ -439,7 +478,7 @@ int main()
                                             logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         }
 
-                                        LOG("Closing incoming connection\n");
+                                        LOG("close (socket: %d)\n", event->socket_fd);
                                         logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                                         close(event->socket_fd);
 
@@ -535,8 +574,6 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
 {
     LOGGER(server);
 
-    int result = 0;
-
     struct sockaddr accepted_address;
     socklen_t accepted_address_size = sizeof(accepted_address);
 
@@ -545,7 +582,6 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
     {
         LOG("Error accept (errno: %d - \"%s\")\n", errno, strerror(errno));
         logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-        result = -1;
     }
     else
     {
@@ -558,78 +594,51 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
             uint16__change_endianness(((struct sockaddr_in *) &accepted_address)->sin_port));
         logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
-        int nonblock_accepted_socket_result = make_socket_nonblocking(accepted_socket);
-        if (nonblock_accepted_socket_result < 0)
+        int ec = make_socket_nonblocking(accepted_socket);
+        if (ec < 0)
         {
             LOG("Error make_socket_nonblocking (errno: %d - \"%s\")\n", errno, strerror(errno));
             logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-            result = -1;
         }
-        else
+    }
+
+    return accepted_socket;
+}
+
+socket__receive_result socket__receive_request(struct webspider *server, int accepted_socket)
+{
+    LOGGER(server);
+
+    socket__receive_result result = {};
+
+    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
+    if (buffer.memory == NULL)
+    {
+        LOG("Could not allocate 16Kb to place received message");
+        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+    }
+    else
+    {
+        int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
+        if (bytes_received < 0)
         {
-            memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
-            if (buffer.memory == NULL)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                LOG("Could not allocate 16Kb to place received message");
-                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                LOG("Closing incoming connection\n");
-                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                close(accepted_socket);
+                result.have_to_wait = true;
             }
             else
             {
-                int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
-                if (bytes_received < 0)
-                {
-                    LOG("recv returned -1, (errno: %d - \"%s\")\n", errno, strerror(errno));
-                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-
-                    if (errno == EAGAIN || errno == EWOULDBLOCK)
-                    {
-                        LOG("Register socket %d to the read messages\n", accepted_socket);
-                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                        int register_result = queue__register(server->async, accepted_socket,
-                            SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__INET_SOCKET);
-                        if (register_result < 0)
-                        {
-                            if (register_result == -2)
-                                LOG("Error coult not add to the kqueue because all %d slots in the array are occupied\n", MAX_EVENTS);
-                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                            if (register_result == -1)
-                                LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")\n", errno, strerror(errno));
-                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-
-                            result = -1;
-                            LOG("Closing incoming connection\n");
-                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                            close(accepted_socket);
-                        }
-                        else
-                        {
-                            LOG("Added to async queue\n");
-                            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                        }
-                    }
-                    else
-                    {
-                        LOG("Error recv (errno: %d - \"%s\")\n", errno, strerror(errno));
-                        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                        result = -1;
-                    }
-                }
-                else
-                {
-                    LOG("Successfully read %d bytes immediately!\n", bytes_received);
-                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                    LOG_UNTRUSTED(buffer.memory, bytes_received);
-
-                    send_payload(server, accepted_socket);
-
-                    LOG("Closing incoming connection\n");
-                    logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                    close(accepted_socket);
-                }
+                LOG("recv returned %d, (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
+                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
             }
+        }
+        else
+        {
+            result.buffer = buffer;
+            result.request = http_request_from_blob(buffer);
+            LOG("Successfully read %d bytes of '%s' request\n", bytes_received, http_request_type_to_cstring(result.request.type));
+            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
+            LOG_UNTRUSTED(buffer.memory, bytes_received);
         }
     }
 
@@ -672,7 +681,7 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
             {
                 LOG("Could not allocate 1Kb to place received message");
                 logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-                LOG("Closing incoming connection\n");
+                LOG("close (socket: %d)\n", accepted_socket);
                 logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                 close(accepted_socket);
             }
@@ -700,7 +709,7 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
                             logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
 
                             result = -1;
-                            LOG("Closing incoming connection\n");
+                            LOG("close (socket: %d)\n", accepted_socket);
                             logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                             close(accepted_socket);
                         }
@@ -735,58 +744,11 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
                         }
                     }
 
-                    LOG("Closing incoming connection\n");
+                    LOG("close (socket: %d)\n", accepted_socket);
                     logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
                     close(accepted_socket);
                 }
             }
-        }
-    }
-
-    return result;
-}
-
-int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_socket)
-{
-    LOGGER(server);
-
-    int result = 0;
-
-    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
-    if (buffer.memory == NULL)
-    {
-        LOG("Could not allocate 16Kb to place received message");
-        logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-    }
-    else
-    {
-        int bytes_received = recv(accepted_socket, buffer.memory, buffer.size - 1, 0);
-        if (bytes_received < 0)
-        {
-            LOG("recv returned %d (errno: %d - \"%s\")\n", bytes_received, errno, strerror(errno));
-            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                LOG("errno=EAGAIN or EWOULDBLOCK...\n");
-                logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-            }
-            else
-            {
-                result = -1;
-            }
-        }
-        else if (bytes_received == 0)
-        {
-            LOG("Read 0 bytes, that means EOF, peer closed the connection (set slot to 0)\n");
-            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-        }
-        else
-        {
-            LOG("Successfully read %d bytes after the event!\n", bytes_received);
-            logger__flush_filename(logger, LOG_FILENAME, LOG_FILE_MAX_SIZE);
-            LOG_UNTRUSTED(buffer.memory, bytes_received);
-
-            send_payload(server, accepted_socket);
         }
     }
 
@@ -1024,6 +986,8 @@ memory_block prepare_report(struct webspider *server)
 #include <memory_allocator.c>
 #include <string_builder.c>
 #include <logger.c>
+#include <lexer.c>
+
 #include "http.c"
 
 #if OS_MAC || OS_FREEBSD
