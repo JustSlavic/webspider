@@ -2,8 +2,10 @@
 #include <integer.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -34,25 +36,7 @@ int main()
         }
         else
         {
-            int bytes_sent = send(webspider_fd, "", 0, 0); // @note minus null terminator
-            if (bytes_sent < 0)
-            {
-                printf("Could not send bytes across socket (errno: %d - \"%s\")\n", errno, strerror(errno));
-            }
-            else
-            {
-                printf("Sent 0 bytes\n");
-                char buffer[1024*4];
-                int bytes_read = recv(webspider_fd, buffer, sizeof(buffer), 0);
-                if (bytes_read < 0)
-                {
-                    printf("Could not receive bytes from socket (errno: %d - \"%s\")\n", errno, strerror(errno));
-                }
-                else
-                {
-                    printf("%.*s\n", bytes_read, buffer);
-                }
-            }
+            sleep(1000);
         }
     }
 
