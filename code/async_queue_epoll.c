@@ -89,10 +89,9 @@ queue__waiting_result wait_for_new_events(struct async_context *context, int mil
     return result;
 }
 
-
-int queue__prune(struct async_context *context, uint64 microseconds)
+queue__prune_result queue__prune(struct async_context *context, uint64 microseconds)
 {
-    int prune_count = 0;
+    queue__prune_result result = {};
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -107,15 +106,15 @@ int queue__prune(struct async_context *context, uint64 microseconds)
             uint64 dt = now - event->timestamp;
             if (dt > microseconds)
             {
+                result.fds[result.pruned_count++] = event->socket_fd;
+
                 close(event->socket_fd);
                 memory__set(event, 0, sizeof(queue__event_data));
-
-                prune_count += 1;
             }
         }
     }
 
-    return prune_count;
+    return result;
 }
 
 
