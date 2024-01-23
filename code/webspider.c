@@ -154,8 +154,8 @@ bool is_symbol_ok(char c)
 #define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
 
-#define LOGGER__USE_STREAM 1
-#define LOGGER__USE_FILE   0
+#define LOGGER__USE_STREAM 0
+#define LOGGER__USE_FILE   1
 #define LOG_FILENAME "/var/log/webspider.log"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
 
