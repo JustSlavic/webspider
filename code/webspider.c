@@ -154,8 +154,8 @@ bool is_symbol_ok(char c)
 #define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
 
-#define LOGGER__USE_STREAM 1
-#define LOGGER__USE_FILE   0
+#define LOGGER__USE_STREAM 0
+#define LOGGER__USE_FILE   1
 #define LOG_FILENAME "/var/log/webspider.log"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
 
@@ -761,10 +761,10 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
         if (request.path_part_count > 0)
         {
             char payload_string[] =
-            "HTTP/1.1 404 Not Found\n"
-            "Content-Type: text/text; charset=utf-8\n"
-            "\n"
-            "fuck you\n";
+                "HTTP/1.1 404 Not Found\n"
+                "Content-Type: text/text; charset=utf-8\n"
+                "\n"
+                "fuck you\n";
             memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
             int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
             if (bytes_sent < 0)
@@ -773,7 +773,7 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
             }
             else
             {
-                LOG("Sent back %d bytes of http", bytes_sent);
+                LOG("Sent back 'fu' message over http", bytes_sent);
             }
         }
         else
@@ -812,6 +812,21 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
     }
     else
     {
+        char payload_string[] =
+            "HTTP/1.1 404 Not Found\n"
+            "Content-Type: text/text; charset=utf-8\n"
+            "\n"
+            "fuck you\n";
+        memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
+        int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+        if (bytes_sent < 0)
+        {
+            LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+        }
+        else
+        {
+            LOG("Sent back 'fu' message over http", bytes_sent);
+        }
         LOG("Did not recongnize http method - ignore request, just close connection!");
     }
 }
