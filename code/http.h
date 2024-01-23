@@ -19,6 +19,9 @@ struct http_request
     enum http_request_type type;
     string_view path[16];
     uint32 path_part_count;
+    string_view header_keys[16];
+    string_view header_vals[16];
+    uint32 header_count;
 };
 typedef struct http_request http_request;
 

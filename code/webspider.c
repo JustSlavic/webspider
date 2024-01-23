@@ -128,6 +128,7 @@ bool is_symbol_ok(char c)
             (c == '{') || (c == '}')  ||
             (c == '-') || (c == '+')  ||
             (c == '/') || (c == '\\') ||
+            (c == '_') || (c == '|')  ||
             (c == '"') || (c == '\'') ||
             (c == '`') || (c == '=')  ||
             (c == ' ') || (c == '\n') ||
@@ -762,7 +763,7 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
         {
             char payload_string[] =
                 "HTTP/1.1 404 Not Found\n"
-                "Content-Type: text/text; charset=utf-8\n"
+                "Content-Type: text/html; charset=utf-8\n"
                 "\n"
                 "fuck you\n";
             memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
@@ -814,7 +815,7 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
     {
         char payload_string[] =
             "HTTP/1.1 404 Not Found\n"
-            "Content-Type: text/text; charset=utf-8\n"
+            "Content-Type: text/html; charset=utf-8\n"
             "\n"
             "fuck you\n";
         memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };

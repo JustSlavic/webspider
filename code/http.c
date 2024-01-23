@@ -18,7 +18,8 @@ char const *http_request_type_to_cstring(enum http_request_type type)
 memory_block http_request_to_blob(http_request);
 memory_block http_response_to_blob(http_response);
 
-bool32 is_newline(char c) { return (c == '\n') ; }
+bool32 is_newline(char c) { return (c == '\n'); }
+bool32 is_ascii_semicolon(char c) { return (c == ':'); }
 bool32 is_space_or_slash_or_question(char c) { return (c == ' ') || (c == '/') || (c == '?'); }
 
 http_request http_request_from_blob(memory_block blob)
@@ -64,6 +65,36 @@ http_request http_request_from_blob(memory_block blob)
             {
                 break;
             }
+        }
+    }
+
+    consume_until(&lexer, is_newline);
+    eat_char(&lexer); // eat newline
+
+    for (int header_index = 0; header_index < ARRAY_COUNT(request.header_keys); header_index++)
+    {
+        char c = get_char(&lexer);
+        if (c == '\n')
+        {
+            break;
+        }
+        else
+        {
+            string_view key_part = { .data = get_pointer(&lexer) };
+            key_part.size = consume_until(&lexer, is_ascii_semicolon);
+
+            eat_char(&lexer); // eat semicolon
+
+            consume_while(&lexer, is_ascii_space);
+
+            string_view val_part = { .data = get_pointer(&lexer) };
+            val_part.size = consume_until(&lexer, is_newline);
+
+            eat_char(&lexer); // eat newline
+
+            request.header_keys[header_index] = key_part;
+            request.header_vals[header_index] = val_part;
+            request.header_count += 1;
         }
     }
 
