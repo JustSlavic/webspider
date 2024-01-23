@@ -42,6 +42,7 @@ struct async_context;
 struct async_context *create_async_context();
 void destroy_async_context(struct async_context *context);
 int queue__register(struct async_context *context, int socket_to_register, int event_type);
+int async__unregister(struct async_context *context, queue__event_data *event);
 queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds);
 
 struct queue__prune_result

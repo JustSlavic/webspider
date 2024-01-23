@@ -154,8 +154,8 @@ bool is_symbol_ok(char c)
 #define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
 
-#define LOGGER__USE_STREAM 0
-#define LOGGER__USE_FILE   1
+#define LOGGER__USE_STREAM 1
+#define LOGGER__USE_FILE   0
 #define LOG_FILENAME "/var/log/webspider.log"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
 
@@ -175,6 +175,7 @@ int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_so
 int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket);
 memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
 memory_block prepare_report(struct webspider *server);
+void respond_to_requst(struct webspider *server, int accepted_socket, http_request request);
 
 
 GLOBAL volatile bool running;
@@ -373,44 +374,8 @@ int main()
                                             socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
                                             if (!receive_result.have_to_wait)
                                             {
-                                                if (receive_result.request.type == HTTP__GET)
-                                                {
-                                                    memory_block response_buffer = ALLOCATE_BUFFER(server.connection_allocator, KILOBYTES(32));
-                                                    if (response_buffer.memory == NULL)
-                                                    {
-                                                        LOG("Could not allocate 32Kb to place http response");
-                                                    }
-                                                    else
-                                                    {
-                                                        string_builder sb = {
-                                                            .memory = response_buffer,
-                                                            .used = 0
-                                                        };
-                                                        memory_block payload = make_http_response(&server, server.connection_allocator, &sb);
-
-                                                        if (payload.memory == NULL)
-                                                        {
-                                                            LOG("Failed to make http response in memory");
-                                                        }
-                                                        else
-                                                        {
-                                                            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-                                                            if (bytes_sent < 0)
-                                                            {
-                                                                LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
-                                                            }
-                                                            else
-                                                            {
-                                                                LOG("Sent back %d bytes of http", bytes_sent);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    LOG("Did not recongnize http method - ignore request, just close connection!");
-                                                }
-                                                LOG("close (socket: %d)", accepted_socket);
+                                                respond_to_requst(&server, accepted_socket, receive_result.request);
+                                                LOG("Close (socket: %d)", accepted_socket);
                                                 close(accepted_socket);
                                                 connections_done += 1;
                                             }
@@ -440,52 +405,10 @@ int main()
                                     {
                                         LOG("Incoming message event (socket %d)", event->socket_fd);
                                         socket__receive_result receive_result = socket__receive_request(&server, event->socket_fd);
-                                        if (receive_result.request.type == HTTP__GET)
-                                        {
-                                            memory_block response_buffer = ALLOCATE_BUFFER(server.connection_allocator, KILOBYTES(32));
-                                            if (response_buffer.memory == NULL)
-                                            {
-                                                LOG("Could not allocate 32Kb to place http response");
-                                            }
-                                            else
-                                            {
-                                                string_builder sb = {
-                                                    .memory = response_buffer,
-                                                    .used = 0
-                                                };
-                                                memory_block payload = make_http_response(&server, server.connection_allocator, &sb);
+                                        respond_to_requst(&server, event->socket_fd, receive_result.request);
 
-                                                if (payload.memory == NULL)
-                                                {
-                                                    LOG("Failed to make http response in memory");
-                                                }
-                                                else
-                                                {
-                                                    int bytes_sent = send(event->socket_fd, payload.memory, payload.size, 0);
-                                                    if (bytes_sent < 0)
-                                                    {
-                                                        LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
-                                                    }
-                                                    else
-                                                    {
-                                                        LOG("Sent back %d bytes of http", bytes_sent);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        LOG("close (socket: %d)", event->socket_fd);
-                                        close(event->socket_fd);
-
-                                        memory__set(event, 0, sizeof(queue__event_data));
-                                        memory_arena__reset(server.connection_allocator);
-                                    }
-                                    else if (queue_event__is(event, SOCKET_EVENT__OUTGOING_MESSAGE))
-                                    {
-                                        LOG("close (socket: %d)", event->socket_fd);
-                                        close(event->socket_fd);
-
-                                        memory__set(event, 0, sizeof(queue__event_data));
+                                        LOG("Close (socket: %d)", event->socket_fd);
+                                        async__unregister(server.async, event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                 }
@@ -511,12 +434,8 @@ int main()
                                             LOG("Could not read from the socket (errno: %d - \"%s\")", errno, strerror(errno));
                                         }
 
-                                        LOG("close (socket: %d)", event->socket_fd);
-                                        close(event->socket_fd);
-
-                                        memory__set(event, 0, sizeof(queue__event_data));
-                                        memory_arena__reset(server.connection_allocator);
-
+                                        LOG("Close (socket: %d)", event->socket_fd);
+                                        async__unregister(server.async, event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                 }
@@ -831,6 +750,70 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
     }
 
     return string_builder__get_string(sb);
+}
+
+void respond_to_requst(struct webspider *server, int accepted_socket, http_request request)
+{
+    LOGGER(server);
+
+    if (request.type == HTTP__GET)
+    {
+        if (request.path_part_count > 0)
+        {
+            char payload_string[] =
+            "HTTP/1.1 404 Not Found\n"
+            "Content-Type: text/text; charset=utf-8\n"
+            "\n"
+            "fuck you\n";
+            memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
+            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+            if (bytes_sent < 0)
+            {
+                LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+            }
+            else
+            {
+                LOG("Sent back %d bytes of http", bytes_sent);
+            }
+        }
+        else
+        {
+            memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
+            if (response_buffer.memory == NULL)
+            {
+                LOG("Could not allocate 32Kb to place http response");
+            }
+            else
+            {
+                string_builder sb = {
+                    .memory = response_buffer,
+                    .used = 0
+                };
+                memory_block payload = make_http_response(server, server->connection_allocator, &sb);
+
+                if (payload.memory == NULL)
+                {
+                    LOG("Failed to make http response in memory");
+                }
+                else
+                {
+                    int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+                    if (bytes_sent < 0)
+                    {
+                        LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+                    }
+                    else
+                    {
+                        LOG("Sent back %d bytes of http", bytes_sent);
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        LOG("Did not recongnize http method - ignore request, just close connection!");
+    }
 }
 
 memory_block prepare_report(struct webspider *server)

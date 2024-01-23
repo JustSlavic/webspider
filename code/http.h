@@ -2,6 +2,7 @@
 #define HTTP_H
 
 #include <base.h>
+#include <string_view.h>
 
 
 enum http_request_type
@@ -16,6 +17,8 @@ enum http_request_type
 struct http_request
 {
     enum http_request_type type;
+    string_view path[16];
+    uint32 path_part_count;
 };
 typedef struct http_request http_request;
 

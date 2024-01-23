@@ -69,6 +69,14 @@ int queue__register(struct async_context *context, int socket_to_register, int e
     return result;
 }
 
+int async__unregister(struct async_context *context, queue__event_data *event)
+{
+    close(event->socket_fd);
+    memory__set(event, 0, sizeof(queue__event_data));
+
+    return 0;
+}
+
 queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds)
 {
     queue__waiting_result result = {};
