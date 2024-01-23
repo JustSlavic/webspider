@@ -8,6 +8,7 @@ LimitCORE=infinite
 ExecStart=/home/webspider/bin/webspider
 WorkingDirectory=/home/webspider/www
 Restart=always
+TimeoutSec=5
 
 [Install]
 WantedBy=multi-user.target
