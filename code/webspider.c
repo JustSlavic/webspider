@@ -135,14 +135,13 @@ bool is_symbol_ok(char c)
 }
 
 #define LOG_UNTRUSTED(BUFFER, SIZE) do { \
-        char buffer__##__LINE__[KILOBYTES(4)]; \
+        char buffer__##__LINE__[KILOBYTES(4)] = {}; \
         uint32 cursor__##__LINE__ = 0; \
         for (int i = 0; i < (SIZE); i++) { \
             char c = (BUFFER)[i]; \
             if (is_symbol_ok(c)) buffer__##__LINE__[cursor__##__LINE__++] = c; \
-            else cursor__##__LINE__+=sprintf(buffer__##__LINE__ + cursor__##__LINE__, "\\0x%x", (int) (c & 0xff)); \
+            else { sprintf(buffer__##__LINE__ + cursor__##__LINE__, "\\0x%02x", (int) (c & 0xff)); cursor__##__LINE__ += 5; } \
         } \
-        buffer__##__LINE__[cursor__##__LINE__++] = '\n'; \
         LOG("\n%s", buffer__##__LINE__); \
     } while (0)
 
@@ -150,12 +149,16 @@ bool is_symbol_ok(char c)
 #define VERSION_MINOR 0
 #define VERSION_COMMIT 0
 #define VERSION_COMMIT_HASH "123abcdef"
+
 #define WAIT_TIMEOUT 10000
 #define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
-#define LOGGER__USE_FILE 1
+
+#define LOGGER__USE_STREAM 1
+#define LOGGER__USE_FILE   0
 #define LOG_FILENAME "/var/log/webspider.log"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
+
 #define INSPECTOR_SOCKET_NAME "/tmp/webspider_unix_socket"
 
 #define IP4_ANY 0
