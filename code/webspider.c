@@ -31,6 +31,7 @@
 #include "webspider.h"
 #include "async_queue.h"
 #include "http.h"
+#include "version.h"
 
 
 const char payload_template[] =
@@ -146,17 +147,12 @@ bool is_symbol_ok(char c)
         LOG("\n%s", buffer__##__LINE__); \
     } while (0)
 
-#define VERSION_MAJOR 0
-#define VERSION_MINOR 0
-#define VERSION_COMMIT 0
-#define VERSION_COMMIT_HASH "123abcdef"
-
 #define WAIT_TIMEOUT 10000
 #define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
 
-#define LOGGER__USE_STREAM 0
-#define LOGGER__USE_FILE   1
+#define LOGGER__USE_STREAM 1
+#define LOGGER__USE_FILE   0
 #define LOG_FILENAME "/var/log/webspider.log"
 #define LOG_FILE_MAX_SIZE MEGABYTES(1)
 
@@ -320,7 +316,7 @@ int main()
                     }
                     else
                     {
-                        LOG("Successfully started webspider version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_COMMIT, VERSION_COMMIT_HASH);
+                        LOG("Successfully started webspider version %s", version);
                         LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection", MEGABYTES_FROM_BYTES(memory_size), MEGABYTES_FROM_BYTES(memory_for_connection_size));
                         LOG("-------------- WELCOME --------------");
 
@@ -937,6 +933,7 @@ memory_block prepare_report(struct webspider *server)
 #include <lexer.c>
 
 #include "http.c"
+#include "version.c"
 
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.c"

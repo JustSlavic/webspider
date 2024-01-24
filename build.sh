@@ -43,6 +43,8 @@ function build() {
         WARNINGS="-Wall -Werror"
     fi
 
+    ./version.sh
+
     case $os_name in
         Darwin | Linux)
             build_webspider="gcc code/webspider.c -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
@@ -53,6 +55,9 @@ function build() {
 
             build_fuzzer="gcc code/fuzzer.c -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_fuzzer"
+
+            build_acf="gcc code/acf_main.c -o bin/acf -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_ "$build_acf"
 
             ;;
         *)
