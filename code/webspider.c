@@ -580,7 +580,7 @@ socket__receive_result socket__receive_request(struct webspider *server, int acc
         {
             result.buffer = buffer;
             result.request = http_request_from_blob(buffer);
-            LOG("Successfully read %d bytes of '%s' request with %d of headers", bytes_received, http_request_type_to_cstring(result.request.type), result.request.header_count);
+            LOG("Successfully read %d bytes of '%s' request with %d headers", bytes_received, http_request_type_to_cstring(result.request.type), result.request.header_count);
             LOG_UNTRUSTED(buffer.memory, bytes_received);
         }
     }
