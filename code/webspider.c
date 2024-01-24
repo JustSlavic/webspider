@@ -321,7 +321,7 @@ int main()
                     else
                     {
                         LOG("Successfully started webspider version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_COMMIT, VERSION_COMMIT_HASH);
-                        LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection", memory_size / 1000000.f, memory_for_connection_size / 1000000.f);
+                        LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection", MEGABYTES_FROM_BYTES(memory_size), MEGABYTES_FROM_BYTES(memory_for_connection_size));
                         LOG("-------------- WELCOME --------------");
 
                         running = true;
