@@ -4,7 +4,7 @@
 
 
 char config[] =
-"id = 42"
+"hello = 42 blah = 2"
 "";
 
 
@@ -23,6 +23,22 @@ int main()
     else if (acf__is_integer(result))
     {
         printf("%lld\n", acf__get_integer(result));
+    }
+    else if (acf__is_object(result))
+    {
+        printf("Object:\n");
+
+        string_view k;
+        struct acf *v;
+        acf__object_iterator it = acf__get_pairs(result);
+
+        while (acf__get_key(&it, &k))
+        {
+            acf__get_val(&it, &v);
+            printf("  %.*s = <something>\n", (int) k.size, k.data);
+
+            acf__next_pair(&it);
+        }
     }
 
     return 0;
