@@ -67,6 +67,13 @@ int main()
     acf result = acf::parse(arena, source);
     print_acf(result, 1);
 
+    acf uds_value = result.get_value(string_id::from("unix_domain_socket"));
+    if (uds_value.is_string())
+    {
+        auto uds_string = uds_value.get_string();
+        printf("\n\ncfg[\"unix_domain_socket\"] = \"%.*s\"\n", (int) uds_string.size, uds_string.data);
+    }
+
     return 0;
 }
 

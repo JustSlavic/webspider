@@ -8,6 +8,8 @@
 #include <string_builder.hpp>
 #include <float32.h>
 #include <logger.h>
+#include <string_id.hpp>
+#include <acf.hpp>
 
 // *nix
 #include <unistd.h>
@@ -147,8 +149,6 @@ bool is_symbol_ok(char c)
         LOG("\n%s", buffer__##__LINE__); \
     } while (0)
 
-#define WAIT_TIMEOUT 10000
-#define BACKLOG_SIZE 32
 #define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
 
 #define LOGGER__USE_STREAM 1
@@ -188,6 +188,10 @@ int main()
 {
     signal(SIGINT, signal__SIGINT);
 
+    auto string_id_buffer = ALLOCATE_BUFFER_(mallocator(), MEGABYTES(1));
+    auto string_id_arena = make_memory_arena(string_id_buffer);
+    string_id::initialize(string_id_arena);
+
     usize memory_size = MEGABYTES(10);
     usize memory_for_connection_size = MEGABYTES(1);
 
@@ -202,6 +206,12 @@ int main()
         .webspider_allocator = make_memory_arena(global_memory),
         .connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size),
     };
+
+    auto config_data = load_file(server.webspider_allocator, "config.acf");
+    auto config = acf::parse(server.webspider_allocator, config_data);
+
+    int64 wait_timeout = config.get_value("wait_timeout").get_integer(10000);
+    int64 backlog_size = config.get_value("backlog_size").get_integer(32);
 
     struct logger logger_ = {};
     logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
@@ -251,7 +261,7 @@ int main()
             }
             else
             {
-                int listen_result = listen(server.socket_for_inspector, BACKLOG_SIZE);
+                int listen_result = listen(server.socket_for_inspector, backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -294,7 +304,7 @@ int main()
             }
             else
             {
-                int listen_result = listen(server.socket_fd, BACKLOG_SIZE);
+                int listen_result = listen(server.socket_fd, backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -319,7 +329,7 @@ int main()
                         running = true;
                         while(running)
                         {
-                            queue__waiting_result wait_result = wait_for_new_events(server.async, WAIT_TIMEOUT); // timeout in milliseconds
+                            queue__waiting_result wait_result = wait_for_new_events(server.async, wait_timeout); // timeout in milliseconds
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
@@ -920,8 +930,10 @@ memory_block prepare_report(webspider *server)
 
 #include <memory_allocator.c>
 #include <string_builder.cpp>
+#include <string_id.cpp>
 #include <logger.c>
 #include <lexer.c>
+#include <acf.cpp>
 
 #include "http.c"
 #include "version.c"
