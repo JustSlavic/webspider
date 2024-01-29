@@ -14,7 +14,7 @@ struct async_context
 
 struct async_context *create_async_context()
 {
-    struct async_context *context = malloc(sizeof(struct async_context));
+    struct async_context *context = ALLOCATE(mallocator(), struct async_context);
     memory__set(context, 0, sizeof(struct async_context));
     context->queue_fd = kqueue();
     return context;
@@ -92,7 +92,7 @@ queue__waiting_result wait_for_new_events(struct async_context *context, int mil
     }
     else if (event_count > 0)
     {
-        result.events = incoming_event.udata;
+        result.events = (queue__event_data *) incoming_event.udata;
         result.event_count = 1;
     }
     else

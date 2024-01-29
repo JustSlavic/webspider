@@ -3,7 +3,8 @@
 set -e
 
 PROJECT=webspider
-STANDARD=c11
+COMPILER=g++
+STANDARD=c++14
 COMPILE_COMMANDS_FILE=compile_commands.json
 
 mkdir -p bin
@@ -30,7 +31,7 @@ function build_() {
 }
 
 function build() {
-    if [ "$command" = "pvs-analyze" ]; then
+    if [ "$command" = "pvs_analyze" ]; then
         COMPILE_DB_JSON="-MJ $COMPILE_COMMANDS_FILE"
     fi
     if [ "$subcommand" = "debug" ]; then
@@ -47,16 +48,19 @@ function build() {
 
     case $os_name in
         Darwin | Linux)
-            build_webspider="gcc code/webspider.c -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            # build_cfg="$COMPILER code/meta_config.c -o bin/meta_config -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            # build_ "$build_cfg"
+
+            build_webspider="$COMPILER code/webspider.cpp -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
             build_ "$build_webspider"
 
-            build_inspector="gcc code/inspector.c -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
+            build_inspector="$COMPILER code/inspector.cpp -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG"
             build_ "$build_inspector"
 
-            build_fuzzer="gcc code/fuzzer.c -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_fuzzer="$COMPILER code/fuzzer.cpp -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_fuzzer"
 
-            build_acf="gcc code/acf_main.c -o bin/acf -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_acf="$COMPILER code/acf_main.cpp -o bin/acf -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_acf"
 
             ;;
@@ -92,7 +96,7 @@ function contains_in() {
     return 1
 }
 
-if contains_in $command "build run pvs-analyze"; then
+if contains_in $command "build run pvs_analyze"; then
     "$command"
 else
     echo "Could not recognize command '$command'"

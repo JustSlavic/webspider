@@ -5,7 +5,7 @@
 #include <integer.h>
 #include <memory.h>
 #include <memory_allocator.h>
-#include <string_builder.h>
+#include <string_builder.hpp>
 #include <float32.h>
 #include <logger.h>
 
@@ -28,7 +28,7 @@
 #include <signal.h>
 
 // Project-specific
-#include "webspider.h"
+#include "webspider.hpp"
 #include "async_queue.h"
 #include "http.h"
 #include "version.h"
@@ -40,23 +40,23 @@ const char payload_template[] =
 "Content-Type: text/html\n"
 "\n";
 
-const char payload_500[] =
-"HTTP/1.0 500 Internal Server Error\n"
-"Content-Length: 237\n"
-"Content-Type: text/html\n"
-"\n"
-"<!DOCTYPE html>\n"
-"<html>\n"
-"<head>\n"
-"    <meta charset=\"utf-8\">\n"
-"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-"    <title>500 - Internal Server Error</title>\n"
-"</head>\n"
-"<body>\n"
-"500 - Internal Server Error\n"
-"</body>\n"
-"</html>\n"
-;
+// const char payload_500[] =
+// "HTTP/1.0 500 Internal Server Error\n"
+// "Content-Length: 237\n"
+// "Content-Type: text/html\n"
+// "\n"
+// "<!DOCTYPE html>\n"
+// "<html>\n"
+// "<head>\n"
+// "    <meta charset=\"utf-8\">\n"
+// "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+// "    <title>500 - Internal Server Error</title>\n"
+// "</head>\n"
+// "<body>\n"
+// "500 - Internal Server Error\n"
+// "</body>\n"
+// "</html>\n"
+// ;
 
 
 struct socket__receive_result
@@ -165,14 +165,14 @@ bool is_symbol_ok(char c)
 
 memory_block load_file(memory_allocator allocator, char const *filename);
 int make_socket_nonblocking(int fd);
-int accept_connection_inet(struct webspider *server, int socket_fd);
-socket__receive_result socket__receive_request(struct webspider *server, int accepted_socket);
-int accept_connection_unix(struct webspider *server, int socket_fd);
-int accepted_inet_socket_ready_to_read(struct webspider *server, int accepted_socket);
-int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket);
-memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb);
-memory_block prepare_report(struct webspider *server);
-void respond_to_requst(struct webspider *server, int accepted_socket, http_request request);
+int accept_connection_inet(webspider *server, int socket_fd);
+socket__receive_result socket__receive_request(webspider *server, int accepted_socket);
+int accept_connection_unix(webspider *server, int socket_fd);
+int accepted_inet_socket_ready_to_read(webspider *server, int accepted_socket);
+int accepted_unix_socket_ready_to_read(webspider *server, int accepted_socket);
+memory_block make_http_response(webspider *server, memory_allocator allocator, string_builder *sb);
+memory_block prepare_report(webspider *server);
+void respond_to_requst(webspider *server, int accepted_socket, http_request request);
 
 
 GLOBAL volatile bool running;
@@ -193,9 +193,9 @@ int main()
 
     void *memory = malloc(memory_size);
     memory__set(memory, 0, memory_size);
-    memory_block global_memory = { .memory = memory, .size = memory_size };
+    memory_block global_memory = make_memory_block(memory, memory_size);
 
-    struct webspider server = {
+    webspider server = {
         .socket_fd = 0,
         .async = NULL,
 
@@ -203,20 +203,16 @@ int main()
         .connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size),
     };
 
-    struct logger logger_ = {
-        .sb = {
-            .memory = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1)),
-            .used = 0,
-        },
+    struct logger logger_ = {};
+    logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
+    logger_.sb.used   = 0;
 #if LOGGER__USE_STREAM
-        .type = LOGGER__STREAM,
-        .fd = 1, // stdout
-    };
+    logger_.type = LOGGER__STREAM;
+    logger_.fd = 1; // stdout
 #elif LOGGER__USE_FILE
-        .type = LOGGER__FILE,
-        .filename = ALLOCATE_ARRAY(server.webspider_allocator, char, cstring__size_with0(LOG_FILENAME)),
-        .rotate_size = LOG_FILE_MAX_SIZE,
-    };
+    logger_.type = LOGGER__FILE;
+    logger_.filename = ALLOCATE_ARRAY(server.webspider_allocator, char, cstring__size_with0(LOG_FILENAME));
+    logger_.rotate_size = LOG_FILE_MAX_SIZE;
     memory__copy(logger_.filename, LOG_FILENAME, array_capacity(logger_.filename) - 1);
 #else
 #error "Should define at least one of 'LOGGER__USE_STREAM' or 'LOGGER__USE_FILE"
@@ -355,8 +351,8 @@ int main()
                                     if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
                                     {
                                         {
-                                            uint32 index = (connections_time_ring_buffer_index++);
-                                            if (connections_time_ring_buffer_index > ARRAY_COUNT(connections_time_ring_buffer))
+                                            uint32 index = (connections_time_ring_buffer_index++) % ARRAY_COUNT(connections_time_ring_buffer);
+                                            if (connections_time_ring_buffer_index >= ARRAY_COUNT(connections_time_ring_buffer))
                                                 connections_time_ring_buffer_index = 0;
 
                                             struct timeval tv;
@@ -515,7 +511,7 @@ int make_socket_nonblocking(int fd)
     return result;
 }
 
-int accept_connection_inet(struct webspider *server, int socket_fd)
+int accept_connection_inet(webspider *server, int socket_fd)
 {
     LOGGER(server);
 
@@ -547,7 +543,7 @@ int accept_connection_inet(struct webspider *server, int socket_fd)
     return accepted_socket;
 }
 
-socket__receive_result socket__receive_request(struct webspider *server, int accepted_socket)
+socket__receive_result socket__receive_request(webspider *server, int accepted_socket)
 {
     LOGGER(server);
 
@@ -584,7 +580,7 @@ socket__receive_result socket__receive_request(struct webspider *server, int acc
     return result;
 }
 
-int accept_connection_unix(struct webspider *server, int socket_fd)
+int accept_connection_unix(webspider *server, int socket_fd)
 {
     LOGGER(server);
 
@@ -679,7 +675,7 @@ int accept_connection_unix(struct webspider *server, int socket_fd)
     return result;
 }
 
-int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_socket)
+int accepted_unix_socket_ready_to_read(webspider *server, int accepted_socket)
 {
     LOGGER(server);
 
@@ -730,7 +726,7 @@ int accepted_unix_socket_ready_to_read(struct webspider *server, int accepted_so
     return result;
 }
 
-memory_block make_http_response(struct webspider *server, memory_allocator allocator, string_builder *sb)
+memory_block make_http_response(webspider *server, memory_allocator allocator, string_builder *sb)
 {
     LOGGER(server);
 
@@ -742,14 +738,14 @@ memory_block make_http_response(struct webspider *server, memory_allocator alloc
     }
     else
     {
-        string_builder__append_format(sb, payload_template, file.size);
-        string_builder__append_buffer(sb, file);
+        sb->append(payload_template, file.size);
+        sb->append(file);
     }
 
-    return string_builder__get_string(sb);
+    return sb->get_string();
 }
 
-void respond_to_requst(struct webspider *server, int accepted_socket, http_request request)
+void respond_to_requst(webspider *server, int accepted_socket, http_request request)
 {
     LOGGER(server);
 
@@ -782,10 +778,7 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
             }
             else
             {
-                string_builder sb = {
-                    .memory = response_buffer,
-                    .used = 0
-                };
+                auto sb = make_string_builder(response_buffer);
                 memory_block payload = make_http_response(server, server->connection_allocator, &sb);
 
                 if (payload.memory == NULL)
@@ -828,7 +821,7 @@ void respond_to_requst(struct webspider *server, int accepted_socket, http_reque
     }
 }
 
-memory_block prepare_report(struct webspider *server)
+memory_block prepare_report(webspider *server)
 {
     // @todo: move this "rendering" part to the inspector,
     // It is more convinient to pass only data;
@@ -865,18 +858,18 @@ memory_block prepare_report(struct webspider *server)
     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
-    string_builder__append_format(&sb, "Connections done:\n    %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
-    string_builder__append_format(&sb, "========= MEMORY ALLOCATOR REPORT ========\n");
-    string_builder__append_format(&sb, "webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
-    string_builder__append_format(&sb, "+----------------------------------------+\n");
-    string_builder__append_format(&sb, "|%.*s%.*s|\n", n_spaces1, squares, 40 - n_spaces1, spaces);
-    string_builder__append_format(&sb, "+----------------------------------------+\n");
-    string_builder__append_format(&sb, "connection allocator: %llu / %llu bytes used;\n", m_report2.used, m_report2.size);
-    string_builder__append_format(&sb, "+----------------------------------------+\n");
-    string_builder__append_format(&sb, "|%.*s%.*s|\n", n_spaces2, squares, 40 - n_spaces2, spaces);
-    string_builder__append_format(&sb, "+----------------------------------------+\n");
-    string_builder__append_format(&sb, "==========================================\n");
-    string_builder__append_format(&sb, "ASYNC QUEUE BUFFER:\n");
+    sb.append("Connections done:\n    %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
+    sb.append("========= MEMORY ALLOCATOR REPORT ========\n");
+    sb.append("webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
+    sb.append("+----------------------------------------+\n");
+    sb.append("|%.*s%.*s|\n", n_spaces1, squares, 40 - n_spaces1, spaces);
+    sb.append("+----------------------------------------+\n");
+    sb.append("connection allocator: %llu / %llu bytes used;\n", m_report2.used, m_report2.size);
+    sb.append("+----------------------------------------+\n");
+    sb.append("|%.*s%.*s|\n", n_spaces2, squares, 40 - n_spaces2, spaces);
+    sb.append("+----------------------------------------+\n");
+    sb.append("==========================================\n");
+    sb.append("ASYNC QUEUE BUFFER:\n");
     for (int i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
     {
         queue__event_data *e = q_report.events_in_work + i;
@@ -894,41 +887,39 @@ memory_block prepare_report(struct webspider *server)
 
             if (n_empty_entries > 2)
             {
-                string_builder__append_format(&sb, "...\n");
+                sb.append("...\n");
                 i += (n_empty_entries - 1);
                 continue;
             }
         }
 
-        string_builder__append_format(&sb, "%2d)", i + 1);
+        sb.append("%2d)", i + 1);
         if (e->socket_fd != 0)
         {
-            string_builder__append_format(&sb, " [%5d]", e->socket_fd);
+            sb.append(" [%5d]", e->socket_fd);
         }
         else
         {
-            string_builder__append_format(&sb, " [     ]");
+            sb.append(" [     ]");
         }
         if (e->event_type != 0)
         {
-            string_builder__append_format(&sb, " %s | %s",
-                e->event_type == 0 ? "" :
+            sb.append(" %s | %s",
                 queue_event__is(e, QUEUE_EVENT__INET_SOCKET) ? "INET" : "UNIX",
-                e->event_type == 0 ? "" :
                 queue_event__is(e, SOCKET_EVENT__INCOMING_CONNECTION) ? "CONNECTIONS " :
                 queue_event__is(e, SOCKET_EVENT__INCOMING_MESSAGE) ? "INCOMING MSG" : "OUTGOING MSG");
         }
         float32 dt = (float32) (now - e->timestamp) / 1000000.f;
-        string_builder__append_format(&sb, " %10.2fs ago\n", dt);
+        sb.append(" %10.2fs ago\n", dt);
     }
-    string_builder__append_format(&sb, "==========================================\n");
+    sb.append("==========================================\n");
 
-    return string_builder__get_string(&sb);
+    return sb.get_string();
 }
 
 
 #include <memory_allocator.c>
-#include <string_builder.c>
+#include <string_builder.cpp>
 #include <logger.c>
 #include <lexer.c>
 
@@ -940,6 +931,4 @@ memory_block prepare_report(struct webspider *server)
 #elif OS_LINUX
 #include "async_queue_epoll.c"
 #endif
-
-
 
