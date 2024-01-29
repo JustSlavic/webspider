@@ -11,8 +11,8 @@ char config[] =
 "unix_domain_socket = \"/tmp/webspider_unix_socket\"\n"
 "\n"
 "logger = {\n"
-"    stream = 1\n"
-"    file = 0\n"
+"    stream = true\n"
+"    file = false\n"
 "\n"
 "    filename = \"/var/log/webspider.log\"\n"
 "    max_size = 1000000\n"
@@ -26,6 +26,10 @@ void print_acf(acf t, int depth)
     if (t.is_null())
     {
         printf("null");
+    }
+    else if (t.is_bool())
+    {
+        printf("%s", t.get_bool() ? "true" : "false");
     }
     else if (t.is_integer())
     {

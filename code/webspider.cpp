@@ -91,19 +91,19 @@ int socket_inet__bind(int fd, uint32 ip4, uint16 port)
     return bind_result;
 }
 
-int socket_unix__bind(int fd, char const *filename)
+int socket_unix__bind(int fd, string_view filename)
 {
     struct sockaddr_un name = {
         .sun_family = AF_UNIX
     };
-    memory__copy(name.sun_path, filename, cstring__size_with0(filename));
+    memory__copy(name.sun_path, filename.data, filename.size);
 
     int bind_result = bind(fd, (struct sockaddr const *) &name, sizeof(name));
     if (bind_result < 0)
     {
         if (errno == EADDRINUSE)
         {
-            unlink(filename);
+            unlink(name.sun_path);
             bind_result = bind(fd, (struct sockaddr const *) &name, sizeof(name));
         }
     }
@@ -148,14 +148,6 @@ bool is_symbol_ok(char c)
         LOG("\n%s", buffer__##__LINE__); \
     } while (0)
 
-#define PRUNE_CONNECTIONS_OLDER_THAN_US 1000000 // 1 s
-
-#define LOGGER__USE_STREAM 1
-#define LOGGER__USE_FILE   0
-#define LOG_FILENAME "/var/log/webspider.log"
-#define LOG_FILE_MAX_SIZE MEGABYTES(1)
-
-#define INSPECTOR_SOCKET_NAME "/tmp/webspider_unix_socket"
 
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
@@ -209,21 +201,31 @@ int main()
 
     int64 wait_timeout = config.get_value("wait_timeout").get_integer(10000);
     int64 backlog_size = config.get_value("backlog_size").get_integer(32);
+    int64 prune_timeout = config.get_value("prune_timeout").get_integer(1000000);
+    string_view uds_name = config.get_value("unix_domain_socket").get_string("/tmp/webspider_unix_socket");
+
+    auto logger_config = config.get_value("logger");
+    auto logger_use_stream = logger_config.get_value("stream").get_bool(false);
+    auto logger_use_file = logger_config.get_value("file").get_bool(false);
+    auto logger_max_size = logger_config.get_value("max_size").get_integer(MEGABYTES(1));
 
     struct logger logger_ = {};
     logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
     logger_.sb.used   = 0;
-#if LOGGER__USE_STREAM
-    logger_.type = LOGGER__STREAM;
-    logger_.fd = 1; // stdout
-#elif LOGGER__USE_FILE
-    logger_.type = LOGGER__FILE;
-    logger_.filename = ALLOCATE_ARRAY(server.webspider_allocator, char, cstring__size_with0(LOG_FILENAME));
-    logger_.rotate_size = LOG_FILE_MAX_SIZE;
-    memory__copy(logger_.filename, LOG_FILENAME, array_capacity(logger_.filename) - 1);
-#else
-#error "Should define at least one of 'LOGGER__USE_STREAM' or 'LOGGER__USE_FILE"
-#endif
+
+    if (logger_use_stream)
+    {
+        logger_.type = logger_.type | LOGGER__STREAM;
+        logger_.fd = 1; // stdout
+    }
+    if (logger_use_file)
+    {
+        string_view logger_filename = logger_config.get_value("filename").get_string("log.txt");
+
+        logger_.type = logger_.type | LOGGER__FILE;
+        logger_.filename = logger_filename;
+        logger_.rotate_size = logger_max_size;
+    }
     server.logger = &logger_;
     LOGGER(&server);
 
@@ -251,7 +253,7 @@ int main()
         }
         else
         {
-            int bind_result = socket_unix__bind(server.socket_for_inspector, INSPECTOR_SOCKET_NAME);
+            int bind_result = socket_unix__bind(server.socket_for_inspector, uds_name);
             if (bind_result < 0)
             {
                 LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
@@ -336,7 +338,7 @@ int main()
                             }
                             else if (wait_result.event_count == 0)
                             {
-                                queue__prune_result prune_result = queue__prune(server.async, PRUNE_CONNECTIONS_OLDER_THAN_US); // timeout in microseconds
+                                queue__prune_result prune_result = queue__prune(server.async, prune_timeout); // timeout in microseconds
                                 if (prune_result.pruned_count > 0)
                                 {
                                     char buffer[1024] = {};
@@ -450,7 +452,11 @@ int main()
         close(server.socket_fd);
     }
 
-    unlink(INSPECTOR_SOCKET_NAME);
+    {
+        char uds_name_cstr[512] = {};
+        memory__copy(uds_name_cstr, uds_name.data, uds_name.size);
+        unlink(uds_name.data);
+    }
     if (server.socket_for_inspector > 0)
     {
         close(server.socket_for_inspector);

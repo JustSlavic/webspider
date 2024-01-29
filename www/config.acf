@@ -5,8 +5,8 @@ prune_timeout = 1000000
 unix_domain_socket = "/tmp/webspider_unix_socket"
 
 logger = {
-    stream = 1
-    file = 0
+    stream = false
+    file = true
 
     filename = "/var/log/webspider.log"
     max_size = 1000000
