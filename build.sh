@@ -48,8 +48,8 @@ function build() {
 
     case $os_name in
         Darwin | Linux)
-            build_cfg="$COMPILER code/meta_config.cpp -o bin/meta_config -std=$STANDARD -I code/based $WARNINGS $DEBUG"
-            build_ "$build_cfg"
+            # build_cfg="$COMPILER code/meta_config.cpp -o bin/meta_config -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            # build_ "$build_cfg"
 
             build_webspider="$COMPILER code/webspider.cpp -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
             build_ "$build_webspider"
