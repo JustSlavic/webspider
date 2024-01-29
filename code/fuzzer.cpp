@@ -23,11 +23,10 @@ int main()
     }
     else
     {
-        struct sockaddr_in address = {
-            .sin_family      = AF_INET,
-            .sin_port        = uint16__change_endianness(80),
-            .sin_addr.s_addr = 0,
-        };
+        struct sockaddr_in address;
+        address.sin_family      = AF_INET;
+        address.sin_port        = uint16__change_endianness(80);
+        address.sin_addr.s_addr = 0;
 
         int connect_result = connect(webspider_fd, (struct sockaddr const *) &address, sizeof(address));
         if (connect_result < 0)
