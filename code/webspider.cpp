@@ -72,11 +72,10 @@ typedef struct socket__receive_result socket__receive_result;
 
 int socket_inet__bind(int fd, uint32 ip4, uint16 port)
 {
-    struct sockaddr_in address = {
-        .sin_family      = AF_INET,
-        .sin_port        = uint16__change_endianness(port),
-        .sin_addr.s_addr = ip4,
-    };
+    struct sockaddr_in address;
+    address.sin_family      = AF_INET;
+    address.sin_port        = uint16__change_endianness(port);
+    address.sin_addr.s_addr = ip4;
 
     int bind_result = bind(fd, (struct sockaddr const *) &address, sizeof(address));
     if (bind_result < 0)
@@ -199,13 +198,11 @@ int main()
     memory__set(memory, 0, memory_size);
     memory_block global_memory = make_memory_block(memory, memory_size);
 
-    webspider server = {
-        .socket_fd = 0,
-        .async = NULL,
-
-        .webspider_allocator = make_memory_arena(global_memory),
-        .connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size),
-    };
+    webspider server;
+    server.socket_fd = 0;
+    server.async = NULL;
+    server.webspider_allocator = make_memory_arena(global_memory);
+    server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
 
     auto config_data = load_file(server.webspider_allocator, "config.acf");
     auto config = acf::parse(server.webspider_allocator, config_data);
@@ -850,7 +847,7 @@ memory_block prepare_report(webspider *server)
     uint64 min_time = 0xffffffffffffffff;
     uint64 max_time = 1;
 
-    for (int i = 0; i < ARRAY_COUNT(connections_time_ring_buffer); i++)
+    for (usize i = 0; i < ARRAY_COUNT(connections_time_ring_buffer); i++)
     {
         uint64 value = connections_time_ring_buffer[i];
         if (value != 0)
@@ -880,14 +877,14 @@ memory_block prepare_report(webspider *server)
     sb.append("+----------------------------------------+\n");
     sb.append("==========================================\n");
     sb.append("ASYNC QUEUE BUFFER:\n");
-    for (int i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
+    for (usize i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
     {
         queue__event_data *e = q_report.events_in_work + i;
 
         if (e->event_type == 0)
         {
             int n_empty_entries = 0;
-            for (int j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
+            for (usize j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
             {
                 queue__event_data *q = q_report.events_in_work + i;
 

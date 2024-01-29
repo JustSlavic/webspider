@@ -13,7 +13,7 @@ struct async_context
 
 struct async_context *create_async_context()
 {
-    struct async_context *context = malloc(sizeof(struct async_context));
+    auto *context = ALLOCATE(mallocator(), async_context);
     memory__set(context, 0, sizeof(struct async_context));
     context->queue_fd = epoll_create1(0);
     return context;
@@ -30,7 +30,7 @@ void destroy_async_context(struct async_context *context)
 int queue__register(struct async_context *context, int socket_to_register, int type)
 {
     int result = -2;
-    for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
+    for (usize i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
         queue__event_data *event = context->registered_events + i;
         if (event->event_type == QUEUE_EVENT__NONE)
@@ -82,7 +82,7 @@ queue__waiting_result wait_for_new_events(struct async_context *context, int mil
     int event_count = epoll_wait(context->queue_fd, &incoming_event, 1, milliseconds);
     if (event_count > 0)
     {
-        for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
+        for (usize i = 0; i < ARRAY_COUNT(context->registered_events); i++)
         {
             if (context->registered_events[i].socket_fd == incoming_event.data.fd)
             {
@@ -104,7 +104,7 @@ queue__prune_result queue__prune(struct async_context *context, uint64 microseco
     gettimeofday(&tv, NULL);
     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
-    for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
+    for (usize i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
         queue__event_data *event = context->registered_events + i;
 
