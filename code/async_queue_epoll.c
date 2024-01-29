@@ -44,10 +44,9 @@ int queue__register(struct async_context *context, int socket_to_register, int t
             else if (!to_read && to_write) event_types = EPOLLOUT;
             else if (to_read && !to_write) event_types = EPOLLIN;
 
-            struct epoll_event reg_event = {
-                .events  = event_types,
-                .data.fd = socket_to_register,
-            };
+            struct epoll_event reg_event;
+            reg_event.events  = event_types;
+            reg_event.data.fd = socket_to_register;
 
             result = epoll_ctl(context->queue_fd, EPOLL_CTL_ADD, socket_to_register, &reg_event);
             if (result >= 0)

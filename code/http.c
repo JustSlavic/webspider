@@ -40,7 +40,7 @@ http_request http_request_from_blob(memory_block blob)
 
         // Parsing URL
 
-        for (int part_index = 0; part_index < ARRAY_COUNT(request.path); part_index++)
+        for (usize part_index = 0; part_index < ARRAY_COUNT(request.path); part_index++)
         {
             char c = get_char(&lexer);
             if (c == '/')
@@ -66,7 +66,7 @@ http_request http_request_from_blob(memory_block blob)
     consume_until(&lexer, is_newline); // Skip until end of line
     eat_newline(&lexer);
 
-    for (int header_index = 0; header_index < ARRAY_COUNT(request.header_keys); header_index++)
+    for (usize header_index = 0; header_index < ARRAY_COUNT(request.header_keys); header_index++)
     {
         char c = get_char(&lexer);
         if (is_newline(c))
