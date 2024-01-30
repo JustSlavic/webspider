@@ -34,6 +34,7 @@
 #include "async_queue.h"
 #include "http.h"
 #include "version.h"
+#include "config.hpp"
 
 
 const char payload_template[] =
@@ -59,6 +60,10 @@ const char payload_template[] =
 // "</body>\n"
 // "</html>\n"
 // ;
+
+// @todo
+// - add used config to inspector report
+// - add acf-based command-line parser
 
 
 struct socket__receive_result
@@ -197,34 +202,22 @@ int main()
     server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
 
     auto config_data = load_file(server.webspider_allocator, "config.acf");
-    auto config = acf::parse(server.webspider_allocator, config_data);
-
-    int64 wait_timeout = config.get_value("wait_timeout").get_integer(10000);
-    int64 backlog_size = config.get_value("backlog_size").get_integer(32);
-    int64 prune_timeout = config.get_value("prune_timeout").get_integer(1000000);
-    string_view uds_name = config.get_value("unix_domain_socket").get_string("/tmp/webspider_unix_socket");
-
-    auto logger_config = config.get_value("logger");
-    auto logger_use_stream = logger_config.get_value("stream").get_bool(false);
-    auto logger_use_file = logger_config.get_value("file").get_bool(false);
-    auto logger_max_size = logger_config.get_value("max_size").get_integer(MEGABYTES(1));
+    auto config = config::load(server.webspider_allocator, config_data);
 
     struct logger logger_ = {};
     logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
     logger_.sb.used   = 0;
 
-    if (logger_use_stream)
+    if (config.logger.stream)
     {
         logger_.type = logger_.type | LOGGER__STREAM;
         logger_.fd = 1; // stdout
     }
-    if (logger_use_file)
+    if (config.logger.file)
     {
-        string_view logger_filename = logger_config.get_value("filename").get_string("log.txt");
-
         logger_.type = logger_.type | LOGGER__FILE;
-        logger_.filename = logger_filename;
-        logger_.rotate_size = logger_max_size;
+        logger_.filename = config.logger.filename;
+        logger_.rotate_size = config.logger.max_size;
     }
     server.logger = &logger_;
     LOGGER(&server);
@@ -253,14 +246,14 @@ int main()
         }
         else
         {
-            int bind_result = socket_unix__bind(server.socket_for_inspector, uds_name);
+            int bind_result = socket_unix__bind(server.socket_for_inspector, config.unix_domain_socket);
             if (bind_result < 0)
             {
                 LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
             }
             else
             {
-                int listen_result = listen(server.socket_for_inspector, backlog_size);
+                int listen_result = listen(server.socket_for_inspector, config.backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -303,7 +296,7 @@ int main()
             }
             else
             {
-                int listen_result = listen(server.socket_fd, backlog_size);
+                int listen_result = listen(server.socket_fd, config.backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -328,7 +321,7 @@ int main()
                         running = true;
                         while(running)
                         {
-                            queue__waiting_result wait_result = wait_for_new_events(server.async, wait_timeout); // timeout in milliseconds
+                            queue__waiting_result wait_result = wait_for_new_events(server.async, config.wait_timeout); // timeout in milliseconds
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
@@ -338,7 +331,7 @@ int main()
                             }
                             else if (wait_result.event_count == 0)
                             {
-                                queue__prune_result prune_result = queue__prune(server.async, prune_timeout); // timeout in microseconds
+                                queue__prune_result prune_result = queue__prune(server.async, config.prune_timeout); // timeout in microseconds
                                 if (prune_result.pruned_count > 0)
                                 {
                                     char buffer[1024] = {};
@@ -454,8 +447,8 @@ int main()
 
     {
         char uds_name_cstr[512] = {};
-        memory__copy(uds_name_cstr, uds_name.data, uds_name.size);
-        unlink(uds_name.data);
+        memory__copy(uds_name_cstr, config.unix_domain_socket.data, config.unix_domain_socket.size);
+        unlink(uds_name_cstr);
     }
     if (server.socket_for_inspector > 0)
     {
@@ -940,6 +933,7 @@ memory_block prepare_report(webspider *server)
 
 #include "http.c"
 #include "version.c"
+#include "config.cpp"
 
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.c"
