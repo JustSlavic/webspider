@@ -143,8 +143,10 @@ bool is_symbol_ok(char c)
 
 void log_untrusted_impl(logger *l, code_location cl, char const *buffer, usize size)
 {
-    char trusted[KILOBYTES(4)];
+    char trusted[KILOBYTES(4)] = {};
     uint32 cursor = 0;
+
+    trusted[cursor++] = '\n';
 
     for (usize i = 0; i < size; i++)
     {
