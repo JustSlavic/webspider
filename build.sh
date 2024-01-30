@@ -64,9 +64,6 @@ function build() {
             build_fuzzer="$COMPILER code/fuzzer.cpp -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_fuzzer"
 
-            build_acf="$COMPILER code/acf_main.cpp -o bin/acf -std=$STANDARD -I code/based $WARNINGS $DEBUG"
-            build_ "$build_acf"
-
             ;;
         *)
             echo "Unrecognazied os name ($os_name)"
