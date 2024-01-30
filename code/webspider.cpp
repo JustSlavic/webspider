@@ -241,7 +241,7 @@ int main()
     LOG("Starting initialization...");
 
     server.async = async::create_context();
-    if (server.async.is_valid())
+    if (!server.async.is_valid())
     {
         LOG("Error async queue");
         return EXIT_FAILURE;
