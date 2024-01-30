@@ -141,16 +141,32 @@ bool is_symbol_ok(char c)
             (c == '\r')|| (c == '\t');
 }
 
-#define LOG_UNTRUSTED(BUFFER, SIZE) do { \
-        char buffer__##__LINE__[KILOBYTES(4)] = {}; \
-        uint32 cursor__##__LINE__ = 0; \
-        for (int i = 0; i < (SIZE); i++) { \
-            char c = (BUFFER)[i]; \
-            if (is_symbol_ok(c)) buffer__##__LINE__[cursor__##__LINE__++] = c; \
-            else { sprintf(buffer__##__LINE__ + cursor__##__LINE__, "\\0x%02x", (int) (c & 0xff)); cursor__##__LINE__ += 5; } \
-        } \
-        LOG("\n%s", buffer__##__LINE__); \
-    } while (0)
+void log_untrusted_impl(logger *l, code_location cl, char const *buffer, usize size)
+{
+    char trusted[KILOBYTES(4)];
+    uint32 cursor = 0;
+
+    for (usize i = 0; i < size; i++)
+    {
+        char c = buffer[i];
+        if (is_symbol_ok(c) && cursor < ARRAY_COUNT(trusted))
+        {
+            trusted[cursor++] = c;
+        }
+        else if ((cursor + 5) < ARRAY_COUNT(trusted))
+        {
+            sprintf(trusted + cursor, "\\0x%02x", (int) (c & 0xff));
+            cursor += 5;
+        }
+        else
+        {
+            break;
+        }
+    }
+    logger__log(l, cl, trusted);
+}
+
+#define LOG_UNTRUSTED(BUFFER, SIZE) log_untrusted_impl(logger, CL_HERE, (char const *) (BUFFER), (SIZE))
 
 
 #define IP4_ANY 0
@@ -554,7 +570,7 @@ socket__receive_result socket__receive_request(webspider *server, int accepted_s
 
     socket__receive_result result = {};
 
-    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(16));
+    memory_block buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(4));
     if (buffer.memory == NULL)
     {
         LOG("Could not allocate 16Kb to place received message");
