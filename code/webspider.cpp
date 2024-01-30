@@ -937,6 +937,6 @@ memory_block prepare_report(webspider *server)
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.cpp"
 #elif OS_LINUX
-#include "async_queue_epoll.c"
+#include "async_queue_epoll.cpp"
 #endif
 
