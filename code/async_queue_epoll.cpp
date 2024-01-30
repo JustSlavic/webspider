@@ -19,7 +19,7 @@ async async::create_context()
     {
         result.impl->queue_fd = epoll_create1(0);
     }
-    return context;
+    return result;
 }
 
 bool32 async::is_valid()
@@ -64,7 +64,7 @@ int async::register_socket_for_async_io(int socket, int event_type)
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
 
-                event->type = type;
+                event->type = event_type;
                 event->fd = socket;
                 event->timestamp = 1000000LLU * tv.tv_sec + tv.tv_usec;
             }
