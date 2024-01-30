@@ -28,11 +28,11 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         {
             fprintf(h_file, "    bool32 %s;\n", p.key.get_cstring());
             fprintf(c_file, "    result");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
             fprintf(c_file, ".%s", p.key.get_cstring());
             fprintf(c_file, " = cfg.");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, "get_value(\"%s\").", names[i].get_cstring());
             fprintf(c_file, "get_value(\"%s\").to_bool();\n", p.key.get_cstring());
         }
@@ -40,11 +40,11 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         {
             fprintf(h_file, "    int64 %s;\n", p.key.get_cstring());
             fprintf(c_file, "    result");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
             fprintf(c_file, ".%s", p.key.get_cstring());
             fprintf(c_file, " = cfg.");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, "get_value(\"%s\").", names[i].get_cstring());
             fprintf(c_file, "get_value(\"%s\").to_integer();\n", p.key.get_cstring());
         }
@@ -52,11 +52,11 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         {
             fprintf(h_file, "    float64 %s;\n", p.key.get_cstring());
             fprintf(c_file, "    result");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
             fprintf(c_file, ".%s", p.key.get_cstring());
             fprintf(c_file, " = cfg.");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, "get_value(\"%s\").", names[i].get_cstring());
             fprintf(c_file, "get_value(\"%s\").to_floating();\n", p.key.get_cstring());
         }
@@ -64,11 +64,11 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         {
             fprintf(h_file, "    string_view %s;\n", p.key.get_cstring());
             fprintf(c_file, "    result");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
             fprintf(c_file, ".%s", p.key.get_cstring());
             fprintf(c_file, " = cfg.");
-            for (int i = 1; i < name_count; i++)
+            for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, "get_value(\"%s\").", names[i].get_cstring());
             fprintf(c_file, "get_value(\"%s\").to_string();\n", p.key.get_cstring());
         }
