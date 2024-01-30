@@ -155,7 +155,7 @@ memory_block load_file(memory_allocator allocator, char const *filename)
         uint32 bytes_read = read(fd, block.memory, st.st_size);
         if (bytes_read < st.st_size)
         {
-            DEALLOCATE(allocator, block);
+            DEALLOCATE_BLOCK(allocator, block);
         }
         else
         {

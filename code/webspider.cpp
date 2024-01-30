@@ -196,7 +196,7 @@ int main()
 
     webspider server;
     server.socket_fd = 0;
-    server.async = NULL;
+    server.async = {};
     server.webspider_allocator = make_memory_arena(global_memory);
     server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
 
@@ -224,8 +224,8 @@ int main()
     LOG("-------------------------------------");
     LOG("Starting initialization...");
 
-    server.async = create_async_context();
-    if (server.async == NULL)
+    server.async = async::create_context();
+    if (server.async.is_valid())
     {
         LOG("Error async queue");
         return EXIT_FAILURE;
@@ -259,7 +259,7 @@ int main()
                 }
                 else
                 {
-                    int register_result = queue__register(server.async, server.socket_for_inspector,
+                    int register_result = server.async.register_socket_for_async_io(server.socket_for_inspector,
                         async::EVENT__CONNECTION | async::EVENT__UNIX_SOCKET);
                     if (register_result < 0)
                     {
@@ -302,7 +302,7 @@ int main()
                 }
                 else
                 {
-                    int register_result = queue__register(server.async, server.socket_fd,
+                    int register_result = server.async.register_socket_for_async_io(server.socket_fd,
                         async::EVENT__CONNECTION | async::EVENT__INET_SOCKET);
                     if (register_result < 0)
                     {
@@ -320,7 +320,7 @@ int main()
                         running = true;
                         while(running)
                         {
-                            queue__waiting_result wait_result = wait_for_new_events(server.async, config.wait_timeout); // timeout in milliseconds
+                            auto wait_result = server.async.wait_for_events(config.wait_timeout); // timeout in milliseconds
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
@@ -330,7 +330,7 @@ int main()
                             }
                             else if (wait_result.event_count == 0)
                             {
-                                queue__prune_result prune_result = queue__prune(server.async, config.prune_timeout); // timeout in microseconds
+                                auto prune_result = server.async.prune(config.prune_timeout); // timeout in microseconds
                                 if (prune_result.pruned_count > 0)
                                 {
                                     char buffer[1024] = {};
@@ -347,9 +347,9 @@ int main()
                             else if (wait_result.event_count > 0)
                             {
                                 async::event *event = wait_result.events;
-                                if (queue_event__is(event, async::EVENT__INET_SOCKET))
+                                if (event->is(async::EVENT__INET_SOCKET))
                                 {
-                                    if (queue_event__is(event, async::EVENT__CONNECTION))
+                                    if (event->is(async::EVENT__CONNECTION))
                                     {
                                         {
                                             uint32 index = (connections_time_ring_buffer_index++) % ARRAY_COUNT(connections_time_ring_buffer);
@@ -377,7 +377,7 @@ int main()
                                             {
                                                 LOG("Register socket %d to the read messages", accepted_socket);
 
-                                                int register_result = queue__register(server.async, accepted_socket,
+                                                int register_result = server.async.register_socket_for_async_io(accepted_socket,
                                                     async::EVENT__MESSAGE_IN | async::EVENT__INET_SOCKET);
                                                 if (register_result < 0)
                                                 {
@@ -395,20 +395,20 @@ int main()
                                         }
                                         memory_arena__reset(server.connection_allocator);
                                     }
-                                    else if (queue_event__is(event, async::EVENT__MESSAGE_IN))
+                                    else if (event->is(async::EVENT__MESSAGE_IN))
                                     {
                                         LOG("Incoming message event (socket %d)", event->fd);
                                         socket__receive_result receive_result = socket__receive_request(&server, event->fd);
                                         respond_to_requst(&server, event->fd, receive_result.request);
 
                                         LOG("Close (socket: %d)", event->fd);
-                                        async__unregister(server.async, event);
+                                        server.async.unregister(event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                 }
-                                else if (queue_event__is(event, async::EVENT__UNIX_SOCKET))
+                                else if (event->is(async::EVENT__UNIX_SOCKET))
                                 {
-                                    if (queue_event__is(event, async::EVENT__CONNECTION))
+                                    if (event->is(async::EVENT__CONNECTION))
                                     {
                                         LOG("Incoming connection event...");
                                         int accept_connection_result = accept_connection_unix(&server, event->fd);
@@ -419,7 +419,7 @@ int main()
 
                                         memory_arena__reset(server.connection_allocator);
                                     }
-                                    else if (queue_event__is(event, async::EVENT__MESSAGE_IN))
+                                    else if (event->is(async::EVENT__MESSAGE_IN))
                                     {
                                         LOG("Incoming message event (socket %d)", event->fd);
                                         int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->fd);
@@ -429,7 +429,7 @@ int main()
                                         }
 
                                         LOG("Close (socket: %d)", event->fd);
-                                        async__unregister(server.async, event);
+                                        server.async.unregister(event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                 }
@@ -454,7 +454,7 @@ int main()
         close(server.socket_for_inspector);
     }
 
-    destroy_async_context(server.async);
+    server.async.destroy_context();
 
     return 0;
 }
@@ -482,7 +482,7 @@ memory_block load_file(memory_allocator allocator, char const *filename)
         uint32 bytes_read = read(fd, block.memory, st.st_size);
         if (bytes_read < st.st_size)
         {
-            DEALLOCATE(allocator, block);
+            DEALLOCATE_BLOCK(allocator, block);
         }
         else
         {
@@ -630,7 +630,7 @@ int accept_connection_unix(webspider *server, int socket_fd)
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                     {
                         LOG("Register socket %d to the read messages", accepted_socket);
-                        int register_result = queue__register(server->async, accepted_socket,
+                        int register_result = server->async.register_socket_for_async_io(accepted_socket,
                             async::EVENT__MESSAGE_IN | async::EVENT__UNIX_SOCKET);
                         if (register_result < 0)
                         {
@@ -839,7 +839,7 @@ memory_block prepare_report(webspider *server)
     struct memory_allocator__report m_report2 = memory_allocator__report(server->connection_allocator);
     int n_spaces2 = truncate_to_int32(40.0f * m_report2.used / m_report2.size);
 
-    struct async_context__report q_report = async_context__report(server->async);
+    auto report = server->async.report();
 
     int connections_counted = 0;
     uint64 min_time = 0xffffffffffffffff;
@@ -875,16 +875,16 @@ memory_block prepare_report(webspider *server)
     sb.append("+----------------------------------------+\n");
     sb.append("==========================================\n");
     sb.append("ASYNC QUEUE BUFFER:\n");
-    for (usize i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
+    for (usize i = 0; i < ARRAY_COUNT(report.events_in_work); i++)
     {
-        async::event *e = q_report.events_in_work + i;
+        async::event *e = report.events_in_work + i;
 
         if (e->type == 0)
         {
             int n_empty_entries = 0;
-            for (usize j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
+            for (usize j = i; j < ARRAY_COUNT(report.events_in_work); j++)
             {
-                async::event *q = q_report.events_in_work + i;
+                async::event *q = report.events_in_work + i;
 
                 if (q->type == 0) n_empty_entries += 1;
                 else break;
@@ -910,9 +910,9 @@ memory_block prepare_report(webspider *server)
         if (e->type != 0)
         {
             sb.append(" %s | %s",
-                queue_event__is(e, async::EVENT__INET_SOCKET) ? "INET" : "UNIX",
-                queue_event__is(e, async::EVENT__CONNECTION) ? "CONNECTIONS " :
-                queue_event__is(e, async::EVENT__MESSAGE_IN) ? "INCOMING MSG" : "OUTGOING MSG");
+                e->is(async::EVENT__INET_SOCKET) ? "INET" : "UNIX",
+                e->is(async::EVENT__CONNECTION) ? "CONNECTIONS " :
+                e->is(async::EVENT__MESSAGE_IN) ? "INCOMING MSG" : "OUTGOING MSG");
         }
         float32 dt = (float32) (now - e->timestamp) / 1000000.f;
         sb.append(" %10.2fs ago\n", dt);

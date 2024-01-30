@@ -30,48 +30,48 @@ struct async
         int type;
         int fd;
         uint64 timestamp;
-    };
-};
 
-struct queue__waiting_result
-{
-    async::event *events;
-    union // Negative number is error code, positive or 0 is ok
+        FORCE_INLINE bool32 is(event_type t)
+        {
+            return (type & t) > 0;
+        }
+    };
+
+    struct wait_result
     {
-        uint32 event_count;
-        int32  error_code;
+        async::event *events;
+        union // Negative number is error code, positive or 0 is ok
+        {
+            uint32 event_count;
+            int32  error_code;
+        };
     };
-};
-typedef struct queue__waiting_result queue__waiting_result;
 
-struct async_context;
+    struct prune_result
+    {
+        int pruned_count;
+        int fds[MAX_EVENTS];
+    };
 
-struct async_context *create_async_context();
-void destroy_async_context(struct async_context *context);
-int queue__register(struct async_context *context, int socket_to_register, int event_type);
-int async__unregister(struct async_context *context, async::event *event);
-queue__waiting_result wait_for_new_events(struct async_context *context, int milliseconds);
+    struct report_result
+    {
+        async::event events_in_work[MAX_EVENTS];
+    };
 
-struct queue__prune_result
-{
-    int pruned_count;
-    int fds[MAX_EVENTS];
-};
-typedef struct queue__prune_result queue__prune_result;
+    static async create_context();
+    void destroy_context();
 
-queue__prune_result queue__prune(struct async_context *context, uint64 microseconds);
+    bool32 is_valid();
 
-FORCE_INLINE bool32 queue_event__is(async::event *event, async::event_type t)
-{
-    return (event->type & t) > 0;
-}
+    int register_socket_for_async_io(int socket, int event_type);
+    int unregister(event *e);
 
-struct async_context__report
-{
-    async::event events_in_work[MAX_EVENTS];
+    wait_result wait_for_events(int milliseconds);
+    prune_result prune(uint64 microseconds);
+    report_result report();
 };
 
-struct async_context__report async_context__report(struct async_context *context);
+
 
 
 #endif // ASYNC_QUEUE_H

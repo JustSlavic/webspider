@@ -12,7 +12,7 @@ struct webspider
     int socket_fd;
     int socket_for_inspector;
 
-    struct async_context *async;
+    async async;
 
     memory_allocator webspider_allocator;
     memory_allocator connection_allocator;
