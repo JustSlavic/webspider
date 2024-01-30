@@ -31,7 +31,6 @@
 
 // Project-specific
 #include "webspider.hpp"
-#include "async_queue.h"
 #include "http.h"
 #include "version.h"
 #include "config.hpp"
@@ -223,7 +222,7 @@ int main()
     LOGGER(&server);
 
     LOG("-------------------------------------");
-    LOG("Staring initialization...");
+    LOG("Starting initialization...");
 
     server.async = create_async_context();
     if (server.async == NULL)
@@ -261,7 +260,7 @@ int main()
                 else
                 {
                     int register_result = queue__register(server.async, server.socket_for_inspector,
-                        SOCKET_EVENT__INCOMING_CONNECTION | QUEUE_EVENT__UNIX_SOCKET);
+                        async::EVENT__CONNECTION | async::EVENT__UNIX_SOCKET);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -304,7 +303,7 @@ int main()
                 else
                 {
                     int register_result = queue__register(server.async, server.socket_fd,
-                        SOCKET_EVENT__INCOMING_CONNECTION | QUEUE_EVENT__INET_SOCKET);
+                        async::EVENT__CONNECTION | async::EVENT__INET_SOCKET);
                     if (register_result < 0)
                     {
                         if (register_result == -2)
@@ -347,10 +346,10 @@ int main()
                             }
                             else if (wait_result.event_count > 0)
                             {
-                                queue__event_data *event = wait_result.events;
-                                if (queue_event__is(event, QUEUE_EVENT__INET_SOCKET))
+                                async::event *event = wait_result.events;
+                                if (queue_event__is(event, async::EVENT__INET_SOCKET))
                                 {
-                                    if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
+                                    if (queue_event__is(event, async::EVENT__CONNECTION))
                                     {
                                         {
                                             uint32 index = (connections_time_ring_buffer_index++) % ARRAY_COUNT(connections_time_ring_buffer);
@@ -363,7 +362,7 @@ int main()
                                             connections_time_ring_buffer[index] = 1000000LLU * tv.tv_sec + tv.tv_usec;
                                         }
 
-                                        int accepted_socket = accept_connection_inet(&server, event->socket_fd);
+                                        int accepted_socket = accept_connection_inet(&server, event->fd);
                                         if (accepted_socket >= 0)
                                         {
                                             socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
@@ -379,7 +378,7 @@ int main()
                                                 LOG("Register socket %d to the read messages", accepted_socket);
 
                                                 int register_result = queue__register(server.async, accepted_socket,
-                                                    SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__INET_SOCKET);
+                                                    async::EVENT__MESSAGE_IN | async::EVENT__INET_SOCKET);
                                                 if (register_result < 0)
                                                 {
                                                     if (register_result == -2) LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
@@ -396,23 +395,23 @@ int main()
                                         }
                                         memory_arena__reset(server.connection_allocator);
                                     }
-                                    else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
+                                    else if (queue_event__is(event, async::EVENT__MESSAGE_IN))
                                     {
-                                        LOG("Incoming message event (socket %d)", event->socket_fd);
-                                        socket__receive_result receive_result = socket__receive_request(&server, event->socket_fd);
-                                        respond_to_requst(&server, event->socket_fd, receive_result.request);
+                                        LOG("Incoming message event (socket %d)", event->fd);
+                                        socket__receive_result receive_result = socket__receive_request(&server, event->fd);
+                                        respond_to_requst(&server, event->fd, receive_result.request);
 
-                                        LOG("Close (socket: %d)", event->socket_fd);
+                                        LOG("Close (socket: %d)", event->fd);
                                         async__unregister(server.async, event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
                                 }
-                                else if (queue_event__is(event, QUEUE_EVENT__UNIX_SOCKET))
+                                else if (queue_event__is(event, async::EVENT__UNIX_SOCKET))
                                 {
-                                    if (queue_event__is(event, SOCKET_EVENT__INCOMING_CONNECTION))
+                                    if (queue_event__is(event, async::EVENT__CONNECTION))
                                     {
                                         LOG("Incoming connection event...");
-                                        int accept_connection_result = accept_connection_unix(&server, event->socket_fd);
+                                        int accept_connection_result = accept_connection_unix(&server, event->fd);
                                         if (accept_connection_result < 0)
                                         {
                                             LOG("Could not accept connection (errno: %d - \"%s\")", errno, strerror(errno));
@@ -420,16 +419,16 @@ int main()
 
                                         memory_arena__reset(server.connection_allocator);
                                     }
-                                    else if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
+                                    else if (queue_event__is(event, async::EVENT__MESSAGE_IN))
                                     {
-                                        LOG("Incoming message event (socket %d)", event->socket_fd);
-                                        int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->socket_fd);
+                                        LOG("Incoming message event (socket %d)", event->fd);
+                                        int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->fd);
                                         if (accept_read_result < 0)
                                         {
                                             LOG("Could not read from the socket (errno: %d - \"%s\")", errno, strerror(errno));
                                         }
 
-                                        LOG("Close (socket: %d)", event->socket_fd);
+                                        LOG("Close (socket: %d)", event->fd);
                                         async__unregister(server.async, event);
                                         memory_arena__reset(server.connection_allocator);
                                     }
@@ -632,7 +631,7 @@ int accept_connection_unix(webspider *server, int socket_fd)
                     {
                         LOG("Register socket %d to the read messages", accepted_socket);
                         int register_result = queue__register(server->async, accepted_socket,
-                            SOCKET_EVENT__INCOMING_MESSAGE | QUEUE_EVENT__UNIX_SOCKET);
+                            async::EVENT__MESSAGE_IN | async::EVENT__UNIX_SOCKET);
                         if (register_result < 0)
                         {
                             if (register_result == -2)
@@ -878,16 +877,16 @@ memory_block prepare_report(webspider *server)
     sb.append("ASYNC QUEUE BUFFER:\n");
     for (usize i = 0; i < ARRAY_COUNT(q_report.events_in_work); i++)
     {
-        queue__event_data *e = q_report.events_in_work + i;
+        async::event *e = q_report.events_in_work + i;
 
-        if (e->event_type == 0)
+        if (e->type == 0)
         {
             int n_empty_entries = 0;
             for (usize j = i; j < ARRAY_COUNT(q_report.events_in_work); j++)
             {
-                queue__event_data *q = q_report.events_in_work + i;
+                async::event *q = q_report.events_in_work + i;
 
-                if (q->event_type == 0) n_empty_entries += 1;
+                if (q->type == 0) n_empty_entries += 1;
                 else break;
             }
 
@@ -900,20 +899,20 @@ memory_block prepare_report(webspider *server)
         }
 
         sb.append("%2d)", i + 1);
-        if (e->socket_fd != 0)
+        if (e->fd != 0)
         {
-            sb.append(" [%5d]", e->socket_fd);
+            sb.append(" [%5d]", e->fd);
         }
         else
         {
             sb.append(" [     ]");
         }
-        if (e->event_type != 0)
+        if (e->type != 0)
         {
             sb.append(" %s | %s",
-                queue_event__is(e, QUEUE_EVENT__INET_SOCKET) ? "INET" : "UNIX",
-                queue_event__is(e, SOCKET_EVENT__INCOMING_CONNECTION) ? "CONNECTIONS " :
-                queue_event__is(e, SOCKET_EVENT__INCOMING_MESSAGE) ? "INCOMING MSG" : "OUTGOING MSG");
+                queue_event__is(e, async::EVENT__INET_SOCKET) ? "INET" : "UNIX",
+                queue_event__is(e, async::EVENT__CONNECTION) ? "CONNECTIONS " :
+                queue_event__is(e, async::EVENT__MESSAGE_IN) ? "INCOMING MSG" : "OUTGOING MSG");
         }
         float32 dt = (float32) (now - e->timestamp) / 1000000.f;
         sb.append(" %10.2fs ago\n", dt);
@@ -936,7 +935,7 @@ memory_block prepare_report(webspider *server)
 #include "config.cpp"
 
 #if OS_MAC || OS_FREEBSD
-#include "async_queue_kqueue.c"
+#include "async_queue_kqueue.cpp"
 #elif OS_LINUX
 #include "async_queue_epoll.c"
 #endif

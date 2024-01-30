@@ -1,4 +1,4 @@
-#include "async_queue.h"
+#include "async_queue.hpp"
 
 #include <stdlib.h>
 #include <sys/event.h>
@@ -8,7 +8,7 @@
 struct async_context
 {
     int queue_fd;
-    queue__event_data registered_events[MAX_EVENTS];
+    async::event registered_events[MAX_EVENTS];
 };
 
 
@@ -31,12 +31,12 @@ int queue__register(struct async_context *context, int socket_to_register, int e
     int result = -2;
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
-        queue__event_data *event = context->registered_events + i;
-        if (event->event_type == QUEUE_EVENT__NONE)
+        async::event *event = context->registered_events + i;
+        if (event->type == async::EVENT__NONE)
         {
-            bool to_read  = (event_type & SOCKET_EVENT__INCOMING_CONNECTION) != 0 ||
-                            (event_type & SOCKET_EVENT__INCOMING_MESSAGE) != 0;
-            bool to_write = (event_type & SOCKET_EVENT__OUTGOING_MESSAGE) != 0;
+            bool to_read  = (event_type & async::EVENT__CONNECTION) != 0 ||
+                            (event_type & async::EVENT__MESSAGE_IN) != 0;
+            bool to_write = (event_type & async::EVENT__MESSAGE_OUT) != 0;
 
             struct kevent reg_events[2] = {}; // 0 - read, 1 - write
             EV_SET(&reg_events[0], socket_to_register, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, event);
@@ -58,8 +58,8 @@ int queue__register(struct async_context *context, int socket_to_register, int e
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
 
-                event->event_type = event_type;
-                event->socket_fd = socket_to_register;
+                event->type = event_type;
+                event->fd = socket_to_register;
                 event->timestamp = 1000000LLU * tv.tv_sec + tv.tv_usec;
             }
             break;
@@ -69,10 +69,10 @@ int queue__register(struct async_context *context, int socket_to_register, int e
     return result;
 }
 
-int async__unregister(struct async_context *context, queue__event_data *event)
+int async__unregister(struct async_context *context, async::event *event)
 {
-    close(event->socket_fd);
-    memory__set(event, 0, sizeof(queue__event_data));
+    close(event->fd);
+    memory__set(event, 0, sizeof(async::event));
 
     return 0;
 }
@@ -92,7 +92,7 @@ queue__waiting_result wait_for_new_events(struct async_context *context, int mil
     }
     else if (event_count > 0)
     {
-        result.events = (queue__event_data *) incoming_event.udata;
+        result.events = (async::event *) incoming_event.udata;
         result.event_count = 1;
     }
     else
@@ -113,17 +113,17 @@ queue__prune_result queue__prune(struct async_context *context, uint64 microseco
 
     for (int i = 0; i < ARRAY_COUNT(context->registered_events); i++)
     {
-        queue__event_data *event = context->registered_events + i;
+        async::event *event = context->registered_events + i;
 
-        if (queue_event__is(event, SOCKET_EVENT__INCOMING_MESSAGE))
+        if (queue_event__is(event, async::EVENT__MESSAGE_IN))
         {
             uint64 dt = now - event->timestamp;
             if (dt > microseconds)
             {
-                result.fds[result.pruned_count++] = event->socket_fd;
+                result.fds[result.pruned_count++] = event->fd;
 
-                close(event->socket_fd);
-                memory__set(event, 0, sizeof(queue__event_data));
+                close(event->fd);
+                memory__set(event, 0, sizeof(async::event));
             }
         }
     }
