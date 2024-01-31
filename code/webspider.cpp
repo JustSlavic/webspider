@@ -245,7 +245,7 @@ int main()
                 else if (path == "/favicon.ico")
                 {
                     server.route_table__keys[server.route_table_count] = string_id::from(path);
-                    server.route_table__vals[server.route_table_count] = serve_index_html;
+                    server.route_table__vals[server.route_table_count] = serve_favicon_ico;
                     server.route_table_count += 1;
                 }
                 if (!file.is_empty())
