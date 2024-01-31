@@ -39,28 +39,10 @@ http_request http_request_from_blob(memory_block blob)
         eat_char(&lexer);
 
         // Parsing URL
+        string_view path = { .data = get_pointer(&lexer) };
+        path.size = consume_until(&lexer, is_ascii_whitespace);
 
-        for (usize part_index = 0; part_index < ARRAY_COUNT(request.path); part_index++)
-        {
-            char c = get_char(&lexer);
-            if (c == '/')
-            {
-                eat_char(&lexer);
-                c = get_char(&lexer);
-                if (c != ' ')
-                {
-                    string_view path_part = { .data = get_pointer(&lexer) };
-                    path_part.size = consume_until(&lexer, is_space_or_slash_or_question);
-
-                    request.path[part_index] = path_part;
-                    request.path_part_count += 1;
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
+        request.url = http::url{ path };
     }
 
     consume_until(&lexer, is_newline); // Skip until end of line

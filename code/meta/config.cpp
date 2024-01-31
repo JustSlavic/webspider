@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 
 
-// static char spaces[] = "                                      ";
+static char spaces[] = "                                                                ";
 
 
 memory_block load_file(memory_allocator allocator, char const *filename);
@@ -20,13 +20,13 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
     }
     else
     {
-        fprintf(h_file, "struct\n{\n");
+        fprintf(h_file, "%.*sstruct\n%.*s{\n", (name_count - 1) * 4, spaces, (name_count - 1) * 4, spaces);
     }
     for (auto p : obj.pairs())
     {
         if (p.value.is_bool())
         {
-            fprintf(h_file, "    bool32 %s;\n", p.key.get_cstring());
+            fprintf(h_file, "%.*sbool32 %s;\n", name_count * 4, spaces, p.key.get_cstring());
             fprintf(c_file, "    result");
             for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
@@ -38,7 +38,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         }
         else if (p.value.is_integer())
         {
-            fprintf(h_file, "    int64 %s;\n", p.key.get_cstring());
+            fprintf(h_file, "%.*sint64 %s;\n", name_count * 4, spaces, p.key.get_cstring());
             fprintf(c_file, "    result");
             for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
@@ -50,7 +50,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         }
         else if (p.value.is_floating())
         {
-            fprintf(h_file, "    float64 %s;\n", p.key.get_cstring());
+            fprintf(h_file, "%.*sfloat64 %s;\n", name_count * 4, spaces, p.key.get_cstring());
             fprintf(c_file, "    result");
             for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
@@ -62,7 +62,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
         }
         else if (p.value.is_string())
         {
-            fprintf(h_file, "    string_view %s;\n", p.key.get_cstring());
+            fprintf(h_file, "%.*sstring_view %s;\n", name_count * 4, spaces, p.key.get_cstring());
             fprintf(c_file, "    result");
             for (uint32 i = 1; i < name_count; i++)
                 fprintf(c_file, ".%s", names[i].get_cstring());
@@ -84,7 +84,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
     }
     else
     {
-        fprintf(h_file, "} %s;\n", names[name_count - 1].get_cstring());
+        fprintf(h_file, "%.*s} %s;\n", (name_count - 1) * 4, spaces, names[name_count - 1].get_cstring());
     }
 }
 
@@ -102,8 +102,8 @@ int main()
 
     acf cfg = acf::parse(arena, source);
 
-    FILE *h_file = fopen("config.hpp", "w");
-    FILE *c_file = fopen("config.cpp", "w");
+    FILE *h_file = fopen("gen/config.hpp", "w");
+    FILE *c_file = fopen("gen/config.cpp", "w");
 
     fprintf(h_file, "#ifndef CONFIG_H\n"
                     "#define CONFIG_H\n"

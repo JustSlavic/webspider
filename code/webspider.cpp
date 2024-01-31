@@ -33,8 +33,9 @@
 #include "webspider.hpp"
 #include "http.h"
 #include "version.h"
-#include "config.hpp"
+#include "gen/config.hpp"
 
+#include "http_handlers.hpp"
 
 const char payload_template[] =
 "HTTP/1.0 200 OK\n"
@@ -197,6 +198,7 @@ void signal__SIGINT(int dummy) {
     running = false;
 }
 
+
 int main()
 {
     signal(SIGINT, signal__SIGINT);
@@ -218,8 +220,41 @@ int main()
     server.webspider_allocator = make_memory_arena(global_memory);
     server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
 
+    server.route_table_count = 0;
+
     auto config_data = load_file(server.webspider_allocator, "config.acf");
     auto config = config::load(server.webspider_allocator, config_data);
+
+    auto mapping_data = load_file(server.webspider_allocator, "mapping.acf");
+    auto mapping = acf::parse(server.webspider_allocator, mapping_data);
+
+    {
+        for (auto v : mapping.values())
+        {
+            if (v.is_object())
+            {
+                auto path = v.get_value("path").to_string("");
+                auto file = v.get_value("serve_file").to_string("");
+
+                if (path == "/")
+                {
+                    server.route_table__keys[server.route_table_count] = string_id::from(path);
+                    server.route_table__vals[server.route_table_count] = serve_index_html;
+                    server.route_table_count += 1;
+                }
+                else if (path == "/favicon.ico")
+                {
+                    server.route_table__keys[server.route_table_count] = string_id::from(path);
+                    server.route_table__vals[server.route_table_count] = serve_index_html;
+                    server.route_table_count += 1;
+                }
+                if (!file.is_empty())
+                {
+                    printf("I should serve %.*s file\n", (int) file.size, file.data);
+                }
+            }
+        }
+    }
 
     struct logger logger_ = {};
     logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
@@ -386,6 +421,8 @@ int main()
                                             socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
                                             if (!receive_result.have_to_wait)
                                             {
+                                                LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
+
                                                 respond_to_requst(&server, accepted_socket, receive_result.request);
                                                 LOG("Close (socket: %d)", accepted_socket);
                                                 close(accepted_socket);
@@ -417,6 +454,7 @@ int main()
                                     {
                                         LOG("Incoming message event (socket %d)", event->fd);
                                         socket__receive_result receive_result = socket__receive_request(&server, event->fd);
+                                        LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
                                         respond_to_requst(&server, event->fd, receive_result.request);
 
                                         LOG("Close (socket: %d)", event->fd);
@@ -802,6 +840,17 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
             else
             {
                 auto sb = make_string_builder(response_buffer);
+
+                for (uint32 path_index = 0; path_index < server->route_table_count; path_index++)
+                {
+                    if (server->route_table__keys[path_index] == string_id::from(request.url.path))
+                    {
+                        http_response response = server->route_table__vals[path_index](request);
+                        LOG("Called a callback from table, it returned status %d\n", response.code);
+                        break;
+                    }
+                }
+
                 memory_block payload = make_http_response(server, server->connection_allocator, &sb);
 
                 if (payload.memory == NULL)
@@ -950,7 +999,8 @@ memory_block prepare_report(webspider *server)
 
 #include "http.c"
 #include "version.c"
-#include "config.cpp"
+#include "gen/config.cpp"
+#include "http_handlers.cpp"
 
 #if OS_MAC || OS_FREEBSD
 #include "async_queue_kqueue.cpp"

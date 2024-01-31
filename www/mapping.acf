@@ -1,0 +1,8 @@
+{
+    path = "/"
+    serve_file = "index.html"
+}
+{
+    path = "/favicon.ico"
+    serve_file = "favicon.ico"
+}

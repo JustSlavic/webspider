@@ -5,6 +5,17 @@
 #include <string_view.hpp>
 
 
+namespace http
+{
+
+struct url
+{
+    string_view path;
+};
+
+} // namespace http
+
+
 enum http_request_type
 {
     HTTP__NONE,
@@ -17,7 +28,7 @@ enum http_request_type
 struct http_request
 {
     enum http_request_type type;
-    string_view path[16];
+    http::url url;
     uint32 path_part_count;
     string_view header_keys[16];
     string_view header_vals[16];
