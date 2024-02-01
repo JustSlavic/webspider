@@ -513,29 +513,30 @@ memory_block load_file(memory_allocator allocator, char const *filename)
 
     int fd = open(filename, O_RDONLY, 0);
     if (fd < 0)
+    {}
+    else
     {
-        return result;
-    }
-
-    struct stat st;
-    int ec = fstat(fd, &st);
-    if (ec < 0)
-    {
-        return result;
-    }
-
-    memory_block block = ALLOCATE_BUFFER(allocator, st.st_size);
-    if (block.memory != NULL)
-    {
-        uint32 bytes_read = read(fd, block.memory, st.st_size);
-        if (bytes_read < st.st_size)
-        {
-            DEALLOCATE_BLOCK(allocator, block);
-        }
+        struct stat st;
+        int ec = fstat(fd, &st);
+        if (ec < 0)
+        {}
         else
         {
-            result = block;
+            memory_block block = ALLOCATE_BUFFER(allocator, st.st_size + 1);
+            if (block.memory != NULL)
+            {
+                uint32 bytes_read = read(fd, block.memory, st.st_size);
+                if (bytes_read < st.st_size)
+                {
+                    DEALLOCATE_BLOCK(allocator, block);
+                }
+                else
+                {
+                    result = block;
+                }
+            }
         }
+        close(fd);
     }
 
     return result;
@@ -812,7 +813,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
                 "\n"
                 "fuck you\n";
             memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
-            int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+            isize bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
             if (bytes_sent < 0)
             {
                 LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
@@ -866,14 +867,14 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
                 }
                 else
                 {
-                    int bytes_sent = send(accepted_socket, response_buffer.memory, response_buffer.size, 0);
+                    isize bytes_sent = send(accepted_socket, response_buffer.memory, response_buffer.size, 0);
                     if (bytes_sent < 0)
                     {
                         LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
                     }
                     else
                     {
-                        LOG("Sent back %d bytes of http", bytes_sent);
+                        LOG("Sent back %lld bytes of http", bytes_sent);
                     }
                 }
             }
@@ -887,7 +888,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
             "\n"
             "fuck you\n";
         memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
-        int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+        isize bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
         if (bytes_sent < 0)
         {
             LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
