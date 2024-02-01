@@ -937,7 +937,8 @@ memory_block prepare_report(webspider *server)
     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
-    sb.append("Connections done:\n    %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
+    sb.append("           Webspider v%s\n", version);
+    sb.append("Connections done: %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
     sb.append("========= MEMORY ALLOCATOR REPORT ========\n");
     sb.append("webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
     sb.append("+----------------------------------------+\n");
