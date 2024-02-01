@@ -15,8 +15,30 @@ char const *http_request_type_to_cstring(enum http_request_type type)
     return "Error";
 }
 
-memory_block http_request_to_blob(http_request);
-memory_block http_response_to_blob(http_response);
+char const *http_response_code_to_cstring(enum http_response_code code)
+{
+    switch (code)
+    {
+        case HTTP__OK: return "OK";
+        case HTTP__NOT_FOUND: return "Not Found";
+        case HTTP__SERVER_ERROR: return "Internal Server Error";
+        // case HTTP__: return "";
+        default: return "<Unknown response code>";
+    }
+    return NULL;
+}
+
+int http_request_to_blob(memory_block, http_request); // @todo
+
+int http_response_to_blob(memory_block blk, http_response response)
+{
+    int result = 0;
+
+    string_builder sb = make_string_builder(blk);
+    result += sb.append("HTTP/1.1 %d %s\n", response.code, http_response_code_to_cstring(response.code));
+
+    return result;
+}
 
 bool32 is_newline(char c) { return (c == '\n') || (c == '\r'); }
 bool32 is_ascii_semicolon(char c) { return (c == ':'); }

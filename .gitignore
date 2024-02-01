@@ -1,5 +1,6 @@
-# Build directories
+# Directories
 bin/
+code/gen/
 
 # Sublime Text
 *.sublime-workspace

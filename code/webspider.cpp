@@ -33,7 +33,6 @@
 #include "webspider.hpp"
 #include "http.h"
 #include "version.h"
-#include "gen/config.hpp"
 
 #include "http_handlers.hpp"
 
@@ -220,10 +219,10 @@ int main()
     server.webspider_allocator = make_memory_arena(global_memory);
     server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
 
-    server.route_table_count = 0;
+    server.route_table__count = 0;
 
     auto config_data = load_file(server.webspider_allocator, "config.acf");
-    auto config = config::load(server.webspider_allocator, config_data);
+    server.config = config::load(server.webspider_allocator, config_data);
 
     auto mapping_data = load_file(server.webspider_allocator, "mapping.acf");
     auto mapping = acf::parse(server.webspider_allocator, mapping_data);
@@ -235,21 +234,14 @@ int main()
             {
                 auto path = v.get_value("path").to_string("");
                 auto file = v.get_value("serve_file").to_string("");
-
-                if (path == "/")
-                {
-                    server.route_table__keys[server.route_table_count] = string_id::from(path);
-                    server.route_table__vals[server.route_table_count] = serve_index_html;
-                    server.route_table_count += 1;
-                }
-                else if (path == "/favicon.ico")
-                {
-                    server.route_table__keys[server.route_table_count] = string_id::from(path);
-                    server.route_table__vals[server.route_table_count] = serve_favicon_ico;
-                    server.route_table_count += 1;
-                }
+                auto mime = v.get_value("mime").to_string("");
                 if (!file.is_empty())
                 {
+                    server.route_table__keys[server.route_table__count] = string_id::from(path);
+                    server.route_table__type[server.route_table__count] = SERVER_RESPONSE__STATIC;
+                    server.route_table__vals[server.route_table__count].filename = file;
+                    server.route_table__vals[server.route_table__count].mime = mime;
+                    server.route_table__count += 1;
                     printf("I should serve %.*s file\n", (int) file.size, file.data);
                 }
             }
@@ -260,16 +252,16 @@ int main()
     logger_.sb.buffer = ALLOCATE_BUFFER(server.webspider_allocator, MEGABYTES(1));
     logger_.sb.used   = 0;
 
-    if (config.logger.stream)
+    if (server.config.logger.stream)
     {
         logger_.type = logger_.type | LOGGER__STREAM;
         logger_.fd = 1; // stdout
     }
-    if (config.logger.file)
+    if (server.config.logger.file)
     {
         logger_.type = logger_.type | LOGGER__FILE;
-        logger_.filename = config.logger.filename;
-        logger_.rotate_size = config.logger.max_size;
+        logger_.filename = server.config.logger.filename;
+        logger_.rotate_size = server.config.logger.max_size;
     }
     server.logger = &logger_;
     LOGGER(&server);
@@ -298,14 +290,14 @@ int main()
         }
         else
         {
-            int bind_result = socket_unix__bind(server.socket_for_inspector, config.unix_domain_socket);
+            int bind_result = socket_unix__bind(server.socket_for_inspector, server.config.unix_domain_socket);
             if (bind_result < 0)
             {
                 LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
             }
             else
             {
-                int listen_result = listen(server.socket_for_inspector, config.backlog_size);
+                int listen_result = listen(server.socket_for_inspector, server.config.backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -348,7 +340,7 @@ int main()
             }
             else
             {
-                int listen_result = listen(server.socket_fd, config.backlog_size);
+                int listen_result = listen(server.socket_fd, server.config.backlog_size);
                 if (listen_result < 0)
                 {
                     LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
@@ -373,7 +365,7 @@ int main()
                         running = true;
                         while(running)
                         {
-                            auto wait_result = server.async.wait_for_events(config.wait_timeout); // timeout in milliseconds
+                            auto wait_result = server.async.wait_for_events(server.config.wait_timeout); // timeout in milliseconds
                             if (wait_result.error_code < 0)
                             {
                                 if (errno != EINTR)
@@ -383,7 +375,7 @@ int main()
                             }
                             else if (wait_result.event_count == 0)
                             {
-                                auto prune_result = server.async.prune(config.prune_timeout); // timeout in microseconds
+                                auto prune_result = server.async.prune(server.config.prune_timeout); // timeout in microseconds
                                 if (prune_result.pruned_count > 0)
                                 {
                                     char buffer[1024] = {};
@@ -502,7 +494,7 @@ int main()
 
     {
         char uds_name_cstr[512] = {};
-        memory__copy(uds_name_cstr, config.unix_domain_socket.data, config.unix_domain_socket.size);
+        memory__copy(uds_name_cstr, server.config.unix_domain_socket.data, server.config.unix_domain_socket.size);
         unlink(uds_name_cstr);
     }
     if (server.socket_for_inspector > 0)
@@ -832,6 +824,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
         }
         else
         {
+            int response_size = 0;
             memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
             if (response_buffer.memory == NULL)
             {
@@ -839,27 +832,41 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
             }
             else
             {
-                auto sb = make_string_builder(response_buffer);
-
-                for (uint32 path_index = 0; path_index < server->route_table_count; path_index++)
+                for (uint32 path_index = 0; path_index < server->route_table__count; path_index++)
                 {
                     if (server->route_table__keys[path_index] == string_id::from(request.url.path))
                     {
-                        http_response response = server->route_table__vals[path_index](request);
-                        LOG("Called a callback from table, it returned status %d\n", response.code);
+                        if (server->route_table__type[path_index] == SERVER_RESPONSE__STATIC)
+                        {
+                            auto filename = server->route_table__vals[path_index].filename;
+                            auto mime = server->route_table__vals[path_index].mime;
+
+                            char filename_buffer[512] = {};
+                            memory__copy(filename_buffer, filename.data, filename.size);
+                            auto content = load_file(server->connection_allocator, filename_buffer);
+
+                            string_builder sb = make_string_builder(response_buffer);
+                            sb.append("HTTP/1.1 200 OK\n");
+                            sb.append("Content-Length: %d\n", content.size);
+                            sb.append("Content-Type: %.*s\n", mime.size, mime.data);
+                            sb.append("\n");
+                            sb.append(content);
+                        }
+                        // http_response response = server->route_table__vals[path_index](request);
+                        // response_size = http_response_to_blob(response_buffer, response);
+                        // LOG("Called a callback from table:\n");
+                        // LOG_UNTRUSTED(response_buffer.memory, response_size);
                         break;
                     }
                 }
 
-                memory_block payload = make_http_response(server, server->connection_allocator, &sb);
-
-                if (payload.memory == NULL)
+                if (response_size > 0)
                 {
                     LOG("Failed to make http response in memory");
                 }
                 else
                 {
-                    int bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
+                    int bytes_sent = send(accepted_socket, response_buffer.memory, response_buffer.size, 0);
                     if (bytes_sent < 0)
                     {
                         LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
@@ -998,7 +1005,7 @@ memory_block prepare_report(webspider *server)
 #include <acf.cpp>
 
 #include "http.c"
-#include "version.c"
+#include "gen/version.c"
 #include "gen/config.cpp"
 #include "http_handlers.cpp"
 

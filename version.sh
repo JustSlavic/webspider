@@ -12,9 +12,6 @@ hash="${BASH_REMATCH[4]}"
 
 echo "v$major.$minor.$patch-$hash"
 
-cat > code/version.c <<- EOM
-#include "version.h"
-
+cat > code/gen/version.c <<- EOM
 const char *version = "$major.$minor.$patch-$hash";
-
 EOM

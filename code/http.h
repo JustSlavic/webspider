@@ -52,8 +52,8 @@ typedef struct http_response http_response;
 
 char const *http_request_type_to_cstring(enum http_request_type type);
 
-memory_block http_request_to_blob(http_request);
-memory_block http_response_to_blob(http_response);
+int http_request_to_blob(memory_block, http_request);
+int http_response_to_blob(memory_block, http_response);
 
 http_request http_request_from_blob(memory_block);
 http_response http_response_from_blob(memory_block);

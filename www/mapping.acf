@@ -1,8 +1,14 @@
 {
     path = "/"
     serve_file = "index.html"
+    mime = "text/html"
 }
 {
     path = "/favicon.ico"
     serve_file = "favicon.ico"
+}
+{
+    path = "/style.css"
+    serve_file = "style.css"
+    mime = "text/css"
 }
