@@ -12,3 +12,13 @@
     serve_file = "style.css"
     mime = "text/css"
 }
+{
+    path = "/life"
+    serve_file = "life/life.html"
+    mime = "text/html"
+}
+{
+    path = "/life/style.css"
+    serve_file = "life/style.css"
+    mime = "text/css"
+}

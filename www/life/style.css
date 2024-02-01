@@ -1,0 +1,39 @@
+.button {
+  background-color: #4CAF50; /* Green */
+  border: none;
+  margin: 5px 5px 0px 0px;
+  color: white;
+  padding: 4px 30px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+}
+
+canvas {
+  background: #e2e2e2;
+}
+
+.row {
+  display: flex;
+}
+
+/* Create two equal columns that sits next to each other */
+.column {
+  flex: 50%;
+  padding: 10px;
+}
+
+.slider {
+  width: 100%;
+  margin: 5px 5px 5px 5px;
+}
+
+body {
+  padding: 50px;
+  font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+}
+
+a {
+  color: #00B7FF;
+}

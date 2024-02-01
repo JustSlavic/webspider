@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Life</title>
+  <link href="/life/style.css" rel="stylesheet">
+</head>
+<body>
+  <div class="row" id="simulationContainer">
+    <div class="column" id="canvasDiv">
+      <canvas id="field" width="800" height="400"></canvas>
+    </div>
+    <div class="column" id="controlDiv">
+      <p id="timeLabel">time: 0</p>
+      <p id="cellsNumLabel">cells: 0</p>
+      <p id="spawnProbLabel" style="display:inline">spawn: 0</p>
+      <input class="slider" id="spawnProbInput" type="range" size="20" min="0" max="1000" value="5" onchange="spawnProbability=this.value/this.max; document.getElementById(&quot;spawnProbLabel&quot;).innerHTML = `spawn: ${this.value/this.max}`;">
+      <br>
+      <p id="divideProbLabel" style="display:inline">divide: 0</p>
+      <input class="slider" id="divideProbInput" type="range" size="20" min="0" max="1000" value="100" onchange="divideProbability=this.value/this.max; document.getElementById(&quot;divideProbLabel&quot;).innerHTML = `divide: ${this.value/this.max}`;">
+      <br>
+      <p id="dieProbLabel" style="display:inline">die: 0</p>
+      <input class="slider" id="dieProbInput" type="range" size="20" min="0" max="1000" value="50" onchange="dieProbability=this.value/this.max; document.getElementById(&quot;dieProbLabel&quot;).innerHTML = `die: ${this.value/this.max}`;">
+      <br>
+      <p id="mutateProbLabel" style="display:inline">mutate: 0</p>
+      <input class="slider" id="mutateProbInput" type="range" size="20" min="0" max="1000" value="100" onchange="mutateProbability=this.value/this.max; document.getElementById(&quot;mutateProbLabel&quot;).innerHTML = `mutate: ${this.value/this.max}`;">
+      <br>
+      <p id="crowdCoeffLabel" style="display:inline">crowdness coefficient:</p>
+      <input class="slider" id="crowdCoeffInput" value="0.00005">
+      <button class="button" id="crowdCoeffConfirm" onclick="crowdCoefficient=parseFloat(document.getElementById(&quot;crowdCoeffInput&quot;).value)">ok</button>
+      <br>
+      <button class="button" id="pauseButton" onclick="pause=!pause; if (!pause) camera.draw();">Pause</button>
+      <button class="button" id="moveUpButton" onclick="camera.move(0, 10);">Up</button>
+      <br>
+      <button class="button" id="moveLeftButton" onclick="camera.move(-10, 0);">Left</button>
+      <button class="button" id="moveCenterButton" onclick="camera.move(-camera.x, -camera.y);">Center</button>
+      <button class="button" id="moveRightButton" onclick="camera.move(10, 0);">Right</button>
+      <br>
+      <button class="button" id="moveDownButton" onclick="camera.move(0, -10);">Down</button>
+      <script type="text/javascript">
+        // Javascript code
+        var canvas = document.getElementById("field");
+        var ctx = canvas.getContext("2d");
+        var time = 0;
+        var fps = 30;
+        var pause = false;
+
+        var spawnProbability = 0.005;
+        var divideProbability = 0.1;
+        var dieProbability = 0.05;
+        var mutateProbability = 0.1;
+        var crowdCoefficient = 0.00005;
+
+        var sleep = async function (ms) {
+          return new Promise(resolve => setTimeout(resolve, ms));
+        };
+
+        class Body {
+          constructor(x, y) {
+            this.x = x;
+            this.y = y;
+          }
+        }
+
+        class Ball extends Body {
+          constructor(x, y, r) {
+            super(x, y);
+            this.r = r;
+
+            this.Rcolor = 0x88;
+            this.Gcolor = 0x88;
+            this.Bcolor = 0x88;
+          }
+
+          draw(offsetX, offsetY) {
+            ctx.beginPath();
+            ctx.arc(this.x + offsetX, offsetY - this.y, this.r, 0, Math.PI*2);
+            ctx.fillStyle = '#' + ('0' + this.Rcolor.toString(16)).slice(-2) + ('0' + this.Gcolor.toString(16)).slice(-2) + ('0' + this.Bcolor.toString(16)).slice(-2);
+            ctx.fill();
+            ctx.closePath();
+          }
+        }
+
+        class Cell extends Ball {
+          constructor() {
+            const x = Math.random()*canvas.width - canvas.width/2;
+            const y = Math.random()*canvas.height - canvas.height/2;
+
+            super(x, y, 4);
+          }
+
+          static spawn(crowd) {
+            const roll = Math.random();
+            return roll < spawnProbability - crowd*crowdCoefficient;
+          }
+
+          readyToDivide(crowd) {
+            const roll = Math.random();
+            return roll < divideProbability - crowd*crowdCoefficient;
+          }
+
+          divide() {
+            let cell = new Cell();
+            cell.Rcolor = this.Rcolor;
+            cell.Gcolor = this.Gcolor;
+            cell.Bcolor = this.Bcolor;
+            let phi = 2*Math.PI*Math.random();
+            cell.x = this.x + 10*Math.cos(phi);
+            cell.y = this.y + 10*Math.sin(phi);
+            const roll = Math.random();
+            if (roll < mutateProbability) {
+              cell.Rcolor += Math.floor(Math.random() * 30) - 15;
+              if (cell.Rcolor < 0) cell.Rcolor = 0;
+              if (cell.Rcolor > 0xff) cell.Rcolor = 0xff;
+
+              cell.Gcolor += Math.floor(Math.random() * 30) - 15;
+              if (cell.Gcolor < 0) cell.Gcolor = 0;
+              if (cell.Gcolor > 0xff) cell.Gcolor = 0xff;
+
+              cell.Bcolor += Math.floor(Math.random() * 30) - 15;
+              if (cell.Bcolor < 0) cell.Bcolor = 0;
+              if (cell.Bcolor > 0xff) cell.Bcolor = 0xff;
+            }
+            // console.log('#' + ('0' + this.Rcolor.toString(16)).slice(-2) + ('0' + this.Gcolor.toString(16)).slice(-2) + ('0' + this.Bcolor.toString(16)).slice(-2));
+            return cell;
+          }
+
+          die(crowd) {
+            const roll = Math.random();
+            return roll < dieProbability;
+          }
+        }
+
+        class Space {
+          constructor() {
+            this.bodies = [];
+            //for (let i = 0; i < 10; ++i)
+            //  this.bodies.push(new Cell());
+          }
+
+          spawn(species) {
+            if (species.spawn(this.bodies.length)) {
+              this.bodies.push(new species());
+            }
+          }
+        }
+
+        var space = new Space();
+
+        class Camera {
+          constructor(x, y) {
+            this.width = canvas.width;
+            this.height = canvas.height;
+            this.x = x;
+            this.y = y;
+          }
+
+          move(x, y) {
+            this.x += x;
+            this.y += y;
+          }
+
+          relativeX(x) {
+            return x - this.x + this.width/2;
+          }
+
+          relativeY(y) {
+            return this.y + this.height/2 - y;
+          }
+
+          async draw() {
+            if (pause) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            this.drawCenter();
+
+            space.spawn(Cell);
+
+            space.bodies.forEach(cell => {
+              if (cell.die(space.bodies.length)) {
+                space.bodies = space.bodies.filter(el => el != cell);
+              }
+              if (cell.readyToDivide(space.bodies.length)) {
+                space.bodies.push(cell.divide());
+              }
+            })
+            space.bodies.forEach(cell => cell.draw(this.relativeX(0), this.relativeY(0)));
+
+            await sleep(Math.floor(1000 / fps));
+            time++;
+            document.getElementById("timeLabel").innerHTML = `time: ${time}`;
+            document.getElementById("cellsNumLabel").innerHTML = `cells: ${space.bodies.length}`;
+            document.getElementById("spawnProbLabel").innerHTML = `spawn: ${spawnProbability}`;
+            document.getElementById("divideProbLabel").innerHTML = `divide: ${divideProbability}`;
+            document.getElementById("dieProbLabel").innerHTML = `die: ${dieProbability}`;
+            document.getElementById("mutateProbLabel").innerHTML = `mutate: ${mutateProbability}`;
+            // console.log(`time=${time}, num cells: ${space.bodies.length}`);
+            requestAnimationFrame(() => this.draw(space.bodies));
+          }
+
+          drawCenter() {
+            ctx.beginPath();
+            ctx.moveTo(this.relativeX(0), this.relativeY(-10));
+            ctx.lineTo(this.relativeX(0), this.relativeY(10));
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(this.relativeX(-10), this.relativeY(0));
+            ctx.lineTo(this.relativeX(10), this.relativeY(0));
+            ctx.stroke();
+          }
+        }
+
+        var camera = new Camera(0, 0);
+        camera.draw();
+
+        const keyDownHandler = function (e) {
+          if (e.code === 'ArrowLeft') { // Left
+            camera.move(-10, 0);
+          }
+          if (e.code === 'ArrowUp') { // Up 
+            camera.move(0, 10);
+          }
+          if (e.code === 'ArrowRight') { // Right
+            camera.move(10, 0);
+          }
+          if (e.code === 'ArrowDown') { // Down
+            camera.move(0, -10);
+          }
+        };
+        document.addEventListener("keydown", keyDownHandler, false);
+      </script>
+    </div>
+  </div>
+</body>
+</html>
