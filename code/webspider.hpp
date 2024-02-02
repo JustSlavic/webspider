@@ -24,7 +24,7 @@ struct response_data
         struct
         {
             string_view filename;
-            string_view mime;
+            string_view content_type;
         };
         handle_request_cb *cb;
     };

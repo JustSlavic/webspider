@@ -232,15 +232,15 @@ int main()
         {
             if (v.is_object())
             {
-                auto path = v.get_value("path").to_string("");
+                auto url = v.get_value("url").to_string("");
                 auto file = v.get_value("serve_file").to_string("");
-                auto mime = v.get_value("mime").to_string("");
+                auto content_type = v.get_value("content_type").to_string("");
                 if (!file.is_empty())
                 {
-                    server.route_table__keys[server.route_table__count] = string_id::from(path);
+                    server.route_table__keys[server.route_table__count] = string_id::from(url);
                     server.route_table__type[server.route_table__count] = SERVER_RESPONSE__STATIC;
                     server.route_table__vals[server.route_table__count].filename = file;
-                    server.route_table__vals[server.route_table__count].mime = mime;
+                    server.route_table__vals[server.route_table__count].content_type = content_type;
                     server.route_table__count += 1;
                     printf("I should serve %.*s file\n", (int) file.size, file.data);
                 }
@@ -841,7 +841,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
                         if (server->route_table__type[path_index] == SERVER_RESPONSE__STATIC)
                         {
                             auto filename = server->route_table__vals[path_index].filename;
-                            auto mime = server->route_table__vals[path_index].mime;
+                            auto content_type = server->route_table__vals[path_index].content_type;
 
                             char filename_buffer[512] = {};
                             memory__copy(filename_buffer, filename.data, filename.size);
@@ -850,7 +850,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
                             string_builder sb = make_string_builder(response_buffer);
                             sb.append("HTTP/1.1 200 OK\n");
                             sb.append("Content-Length: %d\n", payload.size);
-                            sb.append("Content-Type: %.*s\n", mime.size, mime.data);
+                            sb.append("Content-Type: %.*s\n", content_type.size, content_type.data);
                             sb.append("\n");
                             sb.append(payload);
 
