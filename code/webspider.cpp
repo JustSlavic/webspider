@@ -825,6 +825,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
         }
         else
         {
+            uint32 bytes_to_send = 0;
             int response_size = 0;
             memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
             if (response_buffer.memory == NULL)
@@ -844,14 +845,16 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
 
                             char filename_buffer[512] = {};
                             memory__copy(filename_buffer, filename.data, filename.size);
-                            auto content = load_file(server->connection_allocator, filename_buffer);
+                            auto payload = load_file(server->connection_allocator, filename_buffer);
 
                             string_builder sb = make_string_builder(response_buffer);
                             sb.append("HTTP/1.1 200 OK\n");
-                            sb.append("Content-Length: %d\n", content.size);
+                            sb.append("Content-Length: %d\n", payload.size);
                             sb.append("Content-Type: %.*s\n", mime.size, mime.data);
                             sb.append("\n");
-                            sb.append(content);
+                            sb.append(payload);
+
+                            bytes_to_send = sb.used;
                         }
                         // http_response response = server->route_table__vals[path_index](request);
                         // response_size = http_response_to_blob(response_buffer, response);
@@ -867,7 +870,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
                 }
                 else
                 {
-                    isize bytes_sent = send(accepted_socket, response_buffer.memory, response_buffer.size, 0);
+                    isize bytes_sent = send(accepted_socket, response_buffer.memory, bytes_to_send, 0);
                     if (bytes_sent < 0)
                     {
                         LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));

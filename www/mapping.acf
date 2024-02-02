@@ -6,7 +6,12 @@
 {
     path = "/favicon.ico"
     serve_file = "images/favicon.ico"
-    mine = "image/x-icon"
+    mime = "image/x-icon"
+}
+{
+    path = "/apple-touch-icon.png"
+    serve_file = "images/apple-touch-icon.png"
+    mime = "image/png"
 }
 {
     path = "/style.css"
