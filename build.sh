@@ -59,7 +59,7 @@ function build() {
             build_inspector="$COMPILER code/inspector.cpp -o bin/inspector -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG"
             build_ "$build_inspector"
 
-            build_fuzzer="$COMPILER code/fuzzer.cpp -o bin/fuzzer -std=$STANDARD -I code/based $WARNINGS $DEBUG"
+            build_fuzzer="$COMPILER code/kurl.cpp -o bin/kurl -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_fuzzer"
 
             ;;

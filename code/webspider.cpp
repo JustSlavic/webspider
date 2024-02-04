@@ -165,7 +165,7 @@ void log_untrusted_impl(logger *l, code_location cl, char const *buffer, usize s
             break;
         }
     }
-    logger__log(l, cl, trusted);
+    logger__log(l, cl, "%s", trusted);
 }
 
 #define LOG_UNTRUSTED(BUFFER, SIZE) log_untrusted_impl(logger, CL_HERE, (char const *) (BUFFER), (SIZE))
@@ -849,12 +849,12 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
 
                             string_builder sb = make_string_builder(response_buffer);
                             sb.append("HTTP/1.1 200 OK\n");
-                            sb.append("Content-Length: %d\n", payload.size);
+                            sb.append("Content-Length: %d\n", payload.size - 1);
                             sb.append("Content-Type: %.*s\n", content_type.size, content_type.data);
                             sb.append("\n");
                             sb.append(payload);
 
-                            bytes_to_send = sb.used;
+                            bytes_to_send = sb.used - 1;
                         }
                         // http_response response = server->route_table__vals[path_index](request);
                         // response_size = http_response_to_blob(response_buffer, response);

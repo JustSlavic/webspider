@@ -73,7 +73,11 @@ http_request http_request_from_blob(memory_block blob)
     for (usize header_index = 0; header_index < ARRAY_COUNT(request.header_keys); header_index++)
     {
         char c = get_char(&lexer);
-        if (is_newline(c))
+        if (c == 0)
+        {
+            break;
+        }
+        else if (is_newline(c))
         {
             break;
         }
