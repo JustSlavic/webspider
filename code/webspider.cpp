@@ -242,7 +242,6 @@ int main()
                     server.route_table__vals[server.route_table__count].filename = file;
                     server.route_table__vals[server.route_table__count].content_type = content_type;
                     server.route_table__count += 1;
-                    printf("I should serve %.*s file\n", (int) file.size, file.data);
                 }
             }
         }
@@ -363,126 +362,127 @@ int main()
                         LOG("-------------- WELCOME --------------");
 
                         running = true;
-                        while(running)
+                    }
+                }
+            }
+        }
+
+        while(running)
+        {
+            auto wait_result = server.async.wait_for_events(server.config.wait_timeout); // timeout in milliseconds
+            if (wait_result.error_code < 0)
+            {
+                if (errno != EINTR)
+                {
+                    LOG("Could not receive events (return code: %d) (errno: %d - \"%s\")", wait_result.error_code, errno, strerror(errno));
+                }
+            }
+            else if (wait_result.event_count == 0)
+            {
+                auto prune_result = server.async.prune(server.config.prune_timeout); // timeout in microseconds
+                if (prune_result.pruned_count > 0)
+                {
+                    char buffer[1024] = {};
+                    uint32 cursor = 0;
+                    cursor += sprintf(buffer, "%d", prune_result.fds[0]);
+                    for (int i = 1; i < prune_result.pruned_count; i++)
+                    {
+                        cursor += sprintf(buffer + cursor, ", %d", prune_result.fds[i]);
+                    }
+
+                    LOG("Pruned %d connections: %s", prune_result.pruned_count, buffer);
+                }
+            }
+            else if (wait_result.event_count > 0)
+            {
+                async::event *event = wait_result.events;
+                if (event->is(async::EVENT__INET_SOCKET))
+                {
+                    if (event->is(async::EVENT__CONNECTION))
+                    {
                         {
-                            auto wait_result = server.async.wait_for_events(server.config.wait_timeout); // timeout in milliseconds
-                            if (wait_result.error_code < 0)
+                            uint32 index = (connections_time_ring_buffer_index++) % ARRAY_COUNT(connections_time_ring_buffer);
+                            if (connections_time_ring_buffer_index >= ARRAY_COUNT(connections_time_ring_buffer))
+                                connections_time_ring_buffer_index = 0;
+
+                            struct timeval tv;
+                            gettimeofday(&tv,NULL);
+
+                            connections_time_ring_buffer[index] = 1000000LLU * tv.tv_sec + tv.tv_usec;
+                        }
+
+                        int accepted_socket = accept_connection_inet(&server, event->fd);
+                        if (accepted_socket >= 0)
+                        {
+                            socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
+                            if (!receive_result.have_to_wait)
                             {
-                                if (errno != EINTR)
-                                {
-                                    LOG("Could not receive events (return code: %d) (errno: %d - \"%s\")", wait_result.error_code, errno, strerror(errno));
-                                }
+                                LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
+
+                                respond_to_requst(&server, accepted_socket, receive_result.request);
+                                LOG("Close (socket: %d)", accepted_socket);
+                                close(accepted_socket);
+                                connections_done += 1;
                             }
-                            else if (wait_result.event_count == 0)
+                            else
                             {
-                                auto prune_result = server.async.prune(server.config.prune_timeout); // timeout in microseconds
-                                if (prune_result.pruned_count > 0)
-                                {
-                                    char buffer[1024] = {};
-                                    uint32 cursor = 0;
-                                    cursor += sprintf(buffer, "%d", prune_result.fds[0]);
-                                    for (int i = 1; i < prune_result.pruned_count; i++)
-                                    {
-                                        cursor += sprintf(buffer + cursor, ", %d", prune_result.fds[i]);
-                                    }
+                                LOG("Register socket %d to the read messages", accepted_socket);
 
-                                    LOG("Pruned %d connections: %s", prune_result.pruned_count, buffer);
+                                int register_result = server.async.register_socket_for_async_io(accepted_socket,
+                                    async::EVENT__MESSAGE_IN | async::EVENT__INET_SOCKET);
+                                if (register_result < 0)
+                                {
+                                    if (register_result == -2) LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
+                                    if (register_result == -1) LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
+
+                                    LOG("close (socket: %d)", accepted_socket);
+                                    close(accepted_socket);
                                 }
-                            }
-                            else if (wait_result.event_count > 0)
-                            {
-                                async::event *event = wait_result.events;
-                                if (event->is(async::EVENT__INET_SOCKET))
+                                else
                                 {
-                                    if (event->is(async::EVENT__CONNECTION))
-                                    {
-                                        {
-                                            uint32 index = (connections_time_ring_buffer_index++) % ARRAY_COUNT(connections_time_ring_buffer);
-                                            if (connections_time_ring_buffer_index >= ARRAY_COUNT(connections_time_ring_buffer))
-                                                connections_time_ring_buffer_index = 0;
-
-                                            struct timeval tv;
-                                            gettimeofday(&tv,NULL);
-
-                                            connections_time_ring_buffer[index] = 1000000LLU * tv.tv_sec + tv.tv_usec;
-                                        }
-
-                                        int accepted_socket = accept_connection_inet(&server, event->fd);
-                                        if (accepted_socket >= 0)
-                                        {
-                                            socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
-                                            if (!receive_result.have_to_wait)
-                                            {
-                                                LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
-
-                                                respond_to_requst(&server, accepted_socket, receive_result.request);
-                                                LOG("Close (socket: %d)", accepted_socket);
-                                                close(accepted_socket);
-                                                connections_done += 1;
-                                            }
-                                            else
-                                            {
-                                                LOG("Register socket %d to the read messages", accepted_socket);
-
-                                                int register_result = server.async.register_socket_for_async_io(accepted_socket,
-                                                    async::EVENT__MESSAGE_IN | async::EVENT__INET_SOCKET);
-                                                if (register_result < 0)
-                                                {
-                                                    if (register_result == -2) LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
-                                                    if (register_result == -1) LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
-
-                                                    LOG("close (socket: %d)", accepted_socket);
-                                                    close(accepted_socket);
-                                                }
-                                                else
-                                                {
-                                                    LOG("Added to async queue");
-                                                }
-                                            }
-                                        }
-                                        memory_arena__reset(server.connection_allocator);
-                                    }
-                                    else if (event->is(async::EVENT__MESSAGE_IN))
-                                    {
-                                        LOG("Incoming message event (socket %d)", event->fd);
-                                        socket__receive_result receive_result = socket__receive_request(&server, event->fd);
-                                        LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
-                                        respond_to_requst(&server, event->fd, receive_result.request);
-
-                                        LOG("Close (socket: %d)", event->fd);
-                                        server.async.unregister(event);
-                                        memory_arena__reset(server.connection_allocator);
-                                    }
-                                }
-                                else if (event->is(async::EVENT__UNIX_SOCKET))
-                                {
-                                    if (event->is(async::EVENT__CONNECTION))
-                                    {
-                                        LOG("Incoming connection event...");
-                                        int accept_connection_result = accept_connection_unix(&server, event->fd);
-                                        if (accept_connection_result < 0)
-                                        {
-                                            LOG("Could not accept connection (errno: %d - \"%s\")", errno, strerror(errno));
-                                        }
-
-                                        memory_arena__reset(server.connection_allocator);
-                                    }
-                                    else if (event->is(async::EVENT__MESSAGE_IN))
-                                    {
-                                        LOG("Incoming message event (socket %d)", event->fd);
-                                        int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->fd);
-                                        if (accept_read_result < 0)
-                                        {
-                                            LOG("Could not read from the socket (errno: %d - \"%s\")", errno, strerror(errno));
-                                        }
-
-                                        LOG("Close (socket: %d)", event->fd);
-                                        server.async.unregister(event);
-                                        memory_arena__reset(server.connection_allocator);
-                                    }
+                                    LOG("Added to async queue");
                                 }
                             }
                         }
+                        memory_arena__reset(server.connection_allocator);
+                    }
+                    else if (event->is(async::EVENT__MESSAGE_IN))
+                    {
+                        LOG("Incoming message event (socket %d)", event->fd);
+                        socket__receive_result receive_result = socket__receive_request(&server, event->fd);
+                        LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
+                        respond_to_requst(&server, event->fd, receive_result.request);
+
+                        LOG("Close (socket: %d)", event->fd);
+                        server.async.unregister(event);
+                        memory_arena__reset(server.connection_allocator);
+                    }
+                }
+                else if (event->is(async::EVENT__UNIX_SOCKET))
+                {
+                    if (event->is(async::EVENT__CONNECTION))
+                    {
+                        LOG("Incoming connection event...");
+                        int accept_connection_result = accept_connection_unix(&server, event->fd);
+                        if (accept_connection_result < 0)
+                        {
+                            LOG("Could not accept connection (errno: %d - \"%s\")", errno, strerror(errno));
+                        }
+
+                        memory_arena__reset(server.connection_allocator);
+                    }
+                    else if (event->is(async::EVENT__MESSAGE_IN))
+                    {
+                        LOG("Incoming message event (socket %d)", event->fd);
+                        int accept_read_result = accepted_unix_socket_ready_to_read(&server, event->fd);
+                        if (accept_read_result < 0)
+                        {
+                            LOG("Could not read from the socket (errno: %d - \"%s\")", errno, strerror(errno));
+                        }
+
+                        LOG("Close (socket: %d)", event->fd);
+                        server.async.unregister(event);
+                        memory_arena__reset(server.connection_allocator);
                     }
                 }
             }
