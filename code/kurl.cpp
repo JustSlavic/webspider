@@ -1,6 +1,8 @@
 #include <base.h>
 #include <integer.h>
+#include <memory.h>
 #include <string_view.hpp>
+#include <string_builder.hpp>
 #include <memory_allocator.h>
 
 #include <stdio.h>
@@ -13,6 +15,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <netdb.h>
 
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
 #define IP4_LOCALHOST IP4(127, 0, 0, 1)
@@ -32,6 +35,7 @@ bool32 cstrings__equal(char const *s1, char const *s2)
 struct cli_arguments
 {
     char const *filename;
+    char const *hostname;
 };
 
 
@@ -45,16 +49,11 @@ int main(int argc, char **argv)
     int arg_index = 1;
     while (arg_index < argc)
     {
-        printf("arg[%d] = \"%s\"\n", arg_index, argv[arg_index]);
-
         if (cstrings__equal("-f", argv[arg_index]))
         {
             if ((arg_index + 1) < argc)
             {
-                printf("Arg: -f %s\n", argv[arg_index + 1]);
-
                 args.filename = argv[arg_index + 1];
-
                 arg_index += 2;
             }
             else
@@ -67,7 +66,6 @@ int main(int argc, char **argv)
         {
             if ((arg_index + 1) < argc)
             {
-                printf("Arg: --file %s\n", argv[arg_index + 1]);
                 arg_index += 2;
             }
             else
@@ -78,7 +76,7 @@ int main(int argc, char **argv)
         }
         else
         {
-            printf("Warning: do not recognize argument passed: '%s'\n", argv[arg_index]);
+            args.hostname = argv[arg_index];
             arg_index += 1;
         }
     }
@@ -88,6 +86,44 @@ int main(int argc, char **argv)
     {
         payload = load_file(mallocator(), args.filename);
     }
+    else
+    {
+        payload = ALLOCATE_BUFFER(mallocator(), KILOBYTES(1));
+
+        auto sb = make_string_builder(payload);
+        sb.append("GET / HTTP/1.1\n"
+                  "User-Agent: kurl/0.0.0\n"
+                  "Accept: */*\n");
+    }
+
+    struct sockaddr_in address = {};
+    if (args.hostname)
+    {
+        struct addrinfo hints = {};
+        hints.ai_family = AF_INET;       // don't care IPv4 or IPv6
+        hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+
+        struct addrinfo *servinfo;  // will point to the results
+        int getaddrinfo_result = getaddrinfo(args.hostname, "80", &hints, &servinfo);
+        UNUSED(getaddrinfo_result);
+
+        struct addrinfo *p;
+        for(p = servinfo; p != NULL; p = p->ai_next)
+        {
+            if (p->ai_family == AF_INET)
+            {
+                memory__copy(&address, p->ai_addr, sizeof(struct sockaddr_in));
+                break;
+            }
+        }
+
+        freeaddrinfo(servinfo);
+    }
+    else
+    {
+        printf("Error: hostname is not specified\n");
+        return EXIT_FAILURE;
+    }
 
     int webspider_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (webspider_fd < 0)
@@ -96,11 +132,6 @@ int main(int argc, char **argv)
     }
     else
     {
-        struct sockaddr_in address;
-        address.sin_family      = AF_INET;
-        address.sin_port        = uint16__change_endianness(80);
-        address.sin_addr.s_addr = 0;
-
         int connect_result = connect(webspider_fd, (struct sockaddr const *) &address, sizeof(address));
         if (connect_result < 0)
         {
@@ -163,4 +194,5 @@ memory_block load_file(memory_allocator allocator, char const *filename)
 
 
 #include <memory_allocator.c>
+#include <string_builder.cpp>
 
