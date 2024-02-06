@@ -4,7 +4,7 @@ set -e
 
 PROJECT=webspider
 COMPILER=g++
-STANDARD=c++14
+STANDARD=c++17
 COMPILE_COMMANDS_FILE=compile_commands.json
 
 mkdir -p bin
