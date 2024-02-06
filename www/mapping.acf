@@ -48,3 +48,14 @@
     serve_file = "life/style.css"
     content_type = "text/css"
 }
+
+{
+    url = "/robots.txt"
+    serve_file = "robots.txt"
+    content_type = "text/plain"
+}
+{
+    url = "/humans.txt"
+    serve_file = "humans.txt"
+    content_type = "text/plain"
+}

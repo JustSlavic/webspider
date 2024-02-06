@@ -417,7 +417,7 @@ int main()
                             socket__receive_result receive_result = socket__receive_request(&server, accepted_socket);
                             if (!receive_result.have_to_wait)
                             {
-                                LOG("The path is :%.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
+                                LOG("The path is %.*s", (int) receive_result.request.url.path.size, receive_result.request.url.path.data);
 
                                 respond_to_requst(&server, accepted_socket, receive_result.request);
                                 LOG("Close (socket: %d)", accepted_socket);
@@ -805,80 +805,66 @@ void respond_to_requst(webspider *server, int accepted_socket, http_request requ
 
     if (request.type == HTTP__GET)
     {
-        if (request.path_part_count > 0)
+        uint32 response_size = 0;
+        memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
+        if (response_buffer.memory == NULL)
         {
-            char payload_string[] =
-                "HTTP/1.1 404 Not Found\n"
-                "Content-Type: text/html; charset=utf-8\n"
-                "\n"
-                "fuck you\n";
-            memory_block payload = { .memory = (byte *) payload_string, .size = ARRAY_COUNT(payload_string)-1 };
-            isize bytes_sent = send(accepted_socket, payload.memory, payload.size, 0);
-            if (bytes_sent < 0)
-            {
-                LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
-            }
-            else
-            {
-                LOG("Sent back 'fu' message over http", bytes_sent);
-            }
+            LOG("Could not allocate 32Kb to place http response");
         }
         else
         {
-            uint32 bytes_to_send = 0;
-            int response_size = 0;
-            memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
-            if (response_buffer.memory == NULL)
+            for (uint32 path_index = 0; path_index < server->route_table__count; path_index++)
             {
-                LOG("Could not allocate 32Kb to place http response");
-            }
-            else
-            {
-                for (uint32 path_index = 0; path_index < server->route_table__count; path_index++)
+                if (server->route_table__keys[path_index] == string_id::from(request.url.path))
                 {
-                    if (server->route_table__keys[path_index] == string_id::from(request.url.path))
+                    if (server->route_table__type[path_index] == SERVER_RESPONSE__STATIC)
                     {
-                        if (server->route_table__type[path_index] == SERVER_RESPONSE__STATIC)
-                        {
-                            auto filename = server->route_table__vals[path_index].filename;
-                            auto content_type = server->route_table__vals[path_index].content_type;
+                        auto filename = server->route_table__vals[path_index].filename;
+                        auto content_type = server->route_table__vals[path_index].content_type;
 
-                            char filename_buffer[512] = {};
-                            memory__copy(filename_buffer, filename.data, filename.size);
-                            auto payload = load_file(server->connection_allocator, filename_buffer);
+                        char filename_buffer[512] = {};
+                        memory__copy(filename_buffer, filename.data, filename.size);
+                        auto payload = load_file(server->connection_allocator, filename_buffer);
 
-                            string_builder sb = make_string_builder(response_buffer);
-                            sb.append("HTTP/1.1 200 OK\n");
-                            sb.append("Content-Length: %d\n", payload.size - 1);
-                            sb.append("Content-Type: %.*s\n", content_type.size, content_type.data);
-                            sb.append("\n");
-                            sb.append(payload);
+                        string_builder sb = make_string_builder(response_buffer);
+                        sb.append("HTTP/1.1 200 OK\n");
+                        sb.append("Content-Length: %d\n", payload.size - 1);
+                        sb.append("Content-Type: %.*s\n", content_type.size, content_type.data);
+                        sb.append("\n");
+                        sb.append(payload);
 
-                            bytes_to_send = sb.used - 1;
-                        }
-                        // http_response response = server->route_table__vals[path_index](request);
-                        // response_size = http_response_to_blob(response_buffer, response);
-                        // LOG("Called a callback from table:\n");
-                        // LOG_UNTRUSTED(response_buffer.memory, response_size);
-                        break;
+                        response_size = sb.used - 1;
                     }
+                    // http_response response = server->route_table__vals[path_index](request);
+                    // response_size = http_response_to_blob(response_buffer, response);
+                    // LOG("Called a callback from table:\n");
+                    // LOG_UNTRUSTED(response_buffer.memory, response_size);
+                    break;
                 }
+            }
 
-                if (response_size > 0)
+            if (response_size == 0)
+            {
+                string_builder sb = make_string_builder(response_buffer);
+                sb.append("HTTP/1.1 404 Not Found\n");
+                sb.append("Server: Webspider\n");
+                sb.append("Content-Length: 32\n");
+                sb.append("Content-Type: text/plain\n");
+                sb.append("\n");
+                sb.append("Such web page does not exist :(\n");
+
+                response_size = sb.used;
+            }
+
+            {
+                isize bytes_sent = send(accepted_socket, response_buffer.memory, response_size, 0);
+                if (bytes_sent < 0)
                 {
-                    LOG("Failed to make http response in memory");
+                    LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
                 }
                 else
                 {
-                    isize bytes_sent = send(accepted_socket, response_buffer.memory, bytes_to_send, 0);
-                    if (bytes_sent < 0)
-                    {
-                        LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
-                    }
-                    else
-                    {
-                        LOG("Sent back %lld bytes of http", bytes_sent);
-                    }
+                    LOG("Sent back %lld bytes of http", bytes_sent);
                 }
             }
         }
