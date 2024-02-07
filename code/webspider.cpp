@@ -31,7 +31,6 @@
 
 // Project-specific
 #include "webspider.hpp"
-#include "http.h"
 #include "version.h"
 
 #include "http_handlers.hpp"
@@ -69,9 +68,8 @@ struct socket__receive_result
 {
     bool have_to_wait;
     memory_block buffer;
-    http_request request;
+    http::request request;
 };
-typedef struct socket__receive_result socket__receive_result;
 
 
 int socket_inet__bind(int fd, uint32 ip4, uint16 port)
@@ -185,7 +183,7 @@ int accepted_inet_socket_ready_to_read(webspider *server, int accepted_socket);
 int accepted_unix_socket_ready_to_read(webspider *server, int accepted_socket);
 memory_block make_http_response(webspider *server, memory_allocator allocator, string_builder *sb);
 memory_block prepare_report(webspider *server);
-void respond_to_requst(webspider *server, int accepted_socket, http_request request);
+void respond_to_requst(webspider *server, int accepted_socket, http::request request);
 
 
 GLOBAL volatile bool running;
@@ -625,8 +623,8 @@ socket__receive_result socket__receive_request(webspider *server, int accepted_s
         else
         {
             result.buffer = buffer;
-            result.request = http_request_from_blob(buffer);
-            LOG("Successfully read %d bytes of '%s' request with %d headers", bytes_received, http_request_type_to_cstring(result.request.type), result.request.header_count);
+            result.request = http::request::deserialize(buffer);
+            LOG("Successfully read %d bytes of '%s' request with %d headers", bytes_received, to_cstring(result.request.type), result.request.header_count);
             LOG_UNTRUSTED(buffer.memory, bytes_received);
         }
     }
@@ -799,11 +797,11 @@ memory_block make_http_response(webspider *server, memory_allocator allocator, s
     return sb->get_string();
 }
 
-void respond_to_requst(webspider *server, int accepted_socket, http_request request)
+void respond_to_requst(webspider *server, int accepted_socket, http::request request)
 {
     LOGGER(server);
 
-    if (request.type == HTTP__GET)
+    if (request.type == http::GET)
     {
         uint32 response_size = 0;
         memory_block response_buffer = ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(32));
@@ -995,7 +993,7 @@ memory_block prepare_report(webspider *server)
 #include <lexer.c>
 #include <acf.cpp>
 
-#include "http.c"
+#include "http.cpp"
 #include "gen/version.c"
 #include "gen/config.cpp"
 #include "http_handlers.cpp"

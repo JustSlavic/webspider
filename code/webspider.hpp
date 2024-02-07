@@ -6,7 +6,7 @@
 #include <logger.h>
 
 #include "gen/config.hpp"
-#include "http.h"
+#include "http.hpp"
 #include "async_queue.hpp"
 
 
@@ -16,7 +16,7 @@ enum response_type
     SERVER_RESPONSE__DYNAMIC,
 };
 
-typedef http_response handle_request_cb(http_request);
+typedef http::response handle_request_cb(http::request);
 struct response_data
 {
     union

@@ -1,14 +1,14 @@
 #include "http_handlers.hpp"
 
 
-http_response serve_index_html(http_request)
+http::response serve_index_html(http::request)
 {
-    http_response response = { HTTP__OK };
+    http::response response = { http::OK };
     return response;
 }
 
-http_response serve_favicon_ico(http_request)
+http::response serve_favicon_ico(http::request)
 {
-    http_response response = { HTTP__NOT_FOUND };
+    http::response response = { http::NOT_FOUND };
     return response;
 }

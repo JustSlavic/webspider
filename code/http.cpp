@@ -1,41 +1,39 @@
-#include "http.h"
+#include "http.hpp"
 #include <lexer.h>
 
 
-char const *http_request_type_to_cstring(enum http_request_type type)
+char const *http::to_cstring(http::request_type type)
 {
     switch (type)
     {
-        case HTTP__GET: return "GET";
-        case HTTP__POST: return "POST";
-        case HTTP__PUT: return "PUT";
-        case HTTP__DELETE: return "DELETE";
+        case http::GET: return "GET";
+        case http::POST: return "POST";
+        case http::PUT: return "PUT";
+        case http::DELETE: return "DELETE";
         default: return "NONE";
     }
     return "Error";
 }
 
-char const *http_response_code_to_cstring(enum http_response_code code)
+char const *http::to_cstring(http::response_code code)
 {
     switch (code)
     {
-        case HTTP__OK: return "OK";
-        case HTTP__NOT_FOUND: return "Not Found";
-        case HTTP__SERVER_ERROR: return "Internal Server Error";
+        case http::OK: return "OK";
+        case http::NOT_FOUND: return "Not Found";
+        case http::SERVER_ERROR: return "Internal Server Error";
         // case HTTP__: return "";
         default: return "<Unknown response code>";
     }
     return NULL;
 }
 
-int http_request_to_blob(memory_block, http_request); // @todo
-
-int http_response_to_blob(memory_block blk, http_response response)
+int http::response::serialize_to(memory_block blk)
 {
     int result = 0;
 
     string_builder sb = make_string_builder(blk);
-    result += sb.append("HTTP/1.1 %d %s\n", response.code, http_response_code_to_cstring(response.code));
+    result += sb.append("HTTP/1.1 %d %s\n", code, to_cstring(code));
 
     return result;
 }
@@ -44,16 +42,16 @@ bool32 is_newline(char c) { return (c == '\n') || (c == '\r'); }
 bool32 is_ascii_semicolon(char c) { return (c == ':'); }
 bool32 is_space_or_slash_or_question(char c) { return (c == ' ') || (c == '/') || (c == '?'); }
 
-http_request http_request_from_blob(memory_block blob)
+http::request http::request::deserialize(memory_block blob)
 {
-    http_request request = {};
+    http::request request = {};
     struct lexer lexer = make_lexer(blob);
 
-    request.type = eat_cstring(&lexer, "GET") ? HTTP__GET :
-                   eat_cstring(&lexer, "POST") ? HTTP__POST :
-                   eat_cstring(&lexer, "PUT") ? HTTP__PUT :
-                   eat_cstring(&lexer, "DELETE") ? HTTP__DELETE :
-                   HTTP__NONE;
+    request.type = eat_cstring(&lexer, "GET") ? http::GET :
+                   eat_cstring(&lexer, "POST") ? http::POST :
+                   eat_cstring(&lexer, "PUT") ? http::PUT :
+                   eat_cstring(&lexer, "DELETE") ? http::DELETE :
+                   http::NONE;
 
     char c = get_char(&lexer);
     if (c == ' ')
@@ -104,6 +102,6 @@ http_request http_request_from_blob(memory_block blob)
     return request;
 }
 
-http_response http_response_from_blob(memory_block);
+// http_response http_response_from_blob(memory_block);
 
 

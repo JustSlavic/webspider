@@ -2,11 +2,11 @@
 #define HTTP_HANDLERS_HPP
 
 #include <base.h>
-#include "http.h"
+#include "http.hpp"
 
 
-http_response serve_index_html(http_request);
-http_response serve_favicon_ico(http_request);
+http::response serve_index_html(http::request);
+http::response serve_favicon_ico(http::request);
 
 
 #endif // HTTP_HANDLERS_HPP
