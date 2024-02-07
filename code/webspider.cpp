@@ -33,6 +33,7 @@
 #include "webspider.hpp"
 #include "version.h"
 
+
 #include "http_handlers.hpp"
 
 const char payload_template[] =
@@ -169,9 +170,9 @@ void log_untrusted_impl(logger *l, code_location cl, char const *buffer, usize s
 #define LOG_UNTRUSTED(BUFFER, SIZE) log_untrusted_impl(logger, CL_HERE, (char const *) (BUFFER), (SIZE))
 
 
-#define IP4_ANY 0
-#define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
-#define IP4_LOCALHOST IP4(127, 0, 0, 1)
+// #define IP4_ANY 0
+// #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
+// #define IP4_LOCALHOST IP4(127, 0, 0, 1)
 
 
 memory_block load_file(memory_allocator allocator, char const *filename);
@@ -212,7 +213,9 @@ int main()
     memory_block global_memory = make_memory_block(memory, memory_size);
 
     webspider server;
-    server.socket_fd = 0;
+    server.webspider_socket = {};
+    server.inspector_socket = {};
+
     server.async = {};
     server.webspider_allocator = make_memory_arena(global_memory);
     server.connection_allocator = allocate_memory_arena(server.webspider_allocator, memory_for_connection_size);
@@ -226,7 +229,8 @@ int main()
     auto mapping = acf::parse(server.webspider_allocator, mapping_data);
 
     {
-        for (auto v : mapping.values())
+        auto get_map = mapping.get_value("GET");
+        for (auto v : get_map.values())
         {
             if (v.is_object())
             {
@@ -273,95 +277,68 @@ int main()
         return EXIT_FAILURE;
     }
 
-    server.socket_for_inspector = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (server.socket_for_inspector < 0)
+    server.inspector_socket = web::socket::unix(server.config.unix_domain_socket);
+    if (server.inspector_socket.is_fail())
     {
-        LOG("Could not create socket for interprocess communication, run server without inspector");
+        LOG("Error: could not create Unix Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
     }
     else
     {
-        int nonblock_result = make_socket_nonblocking(server.socket_fd);
+        int nonblock_result = server.inspector_socket.make_nonblocking();
         if (nonblock_result < 0)
         {
-            LOG("Error: make_socket_nonblocking");
+            LOG("Could not make Unix Domain Socket non blocking! (errno: %d - \"%s\")\n", errno, strerror(errno));
         }
         else
         {
-            int bind_result = socket_unix__bind(server.socket_for_inspector, server.config.unix_domain_socket);
-            if (bind_result < 0)
+            int reg_result = server.async.register_socket_for_async_io(server.inspector_socket.fd,
+                async::EVENT__CONNECTION | async::EVENT__UNIX_SOCKET);
+            if (reg_result < 0)
             {
-                LOG("Error bind UNIX Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
+                if (reg_result == -2)
+                    LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
+                if (reg_result == -1)
+                    LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
             }
             else
             {
-                int listen_result = listen(server.socket_for_inspector, server.config.backlog_size);
-                if (listen_result < 0)
-                {
-                    LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
-                }
-                else
-                {
-                    int register_result = server.async.register_socket_for_async_io(server.socket_for_inspector,
-                        async::EVENT__CONNECTION | async::EVENT__UNIX_SOCKET);
-                    if (register_result < 0)
-                    {
-                        if (register_result == -2)
-                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
-                        if (register_result == -1)
-                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
-                    }
-                }
+                server.inspector_socket.listen(server.config.backlog_size);
             }
         }
     }
 
-    server.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server.socket_fd < 0)
+    server.webspider_socket = web::socket::inet(web::address{IP4_ANY, PORT(80)});
+    if (server.webspider_socket.is_fail())
     {
-        LOG("Error socket (errno: %d - \"%s\")", errno, strerror(errno));
-        return EXIT_FAILURE;
+        LOG("Error: could not create Internet Domain Socket (errno: %d - \"%s\")\n", errno, strerror(errno));
     }
     else
     {
-        int nonblock_result = make_socket_nonblocking(server.socket_fd);
+        int nonblock_result = server.webspider_socket.make_nonblocking();
         if (nonblock_result < 0)
         {
-            LOG("Error: make_socket_nonblocking");
+            LOG("Could not make Internet Domain Socket non blocking! (errno: %d - \"%s\")\n", errno, strerror(errno));
         }
         else
         {
-            int bind_result = socket_inet__bind(server.socket_fd, IP4_ANY, 80);
-            if (bind_result < 0)
+            int reg_result = server.async.register_socket_for_async_io(server.webspider_socket.fd,
+                async::EVENT__CONNECTION | async::EVENT__INET_SOCKET);
+            if (reg_result < 0)
             {
-                LOG("Error bind Internet Protocol Socket (errno: %d - \"%s\")", errno, strerror(errno));
+                if (reg_result == -2)
+                    LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
+                if (reg_result == -1)
+                    LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
             }
             else
             {
-                int listen_result = listen(server.socket_fd, server.config.backlog_size);
-                if (listen_result < 0)
-                {
-                    LOG("Error listen (errno: %d - \"%s\")", errno, strerror(errno));
-                }
-                else
-                {
-                    int register_result = server.async.register_socket_for_async_io(server.socket_fd,
-                        async::EVENT__CONNECTION | async::EVENT__INET_SOCKET);
-                    if (register_result < 0)
-                    {
-                        if (register_result == -2)
-                            LOG("Error coult not add to the kqueue because all %d slots in the array are occupied", MAX_EVENTS);
-                        if (register_result == -1)
-                            LOG("Error kregister_accepted_socket_result (errno: %d - \"%s\")", errno, strerror(errno));
-                    }
-                    else
-                    {
-                        LOG("Successfully started webspider version %s", version);
-                        LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection", MEGABYTES_FROM_BYTES(memory_size), MEGABYTES_FROM_BYTES(memory_for_connection_size));
-                        LOG("-------------- WELCOME --------------");
+                server.webspider_socket.listen(server.config.backlog_size);
 
-                        running = true;
-                    }
-                }
+                LOG("Successfully started webspider version %s", version);
+                LOG("Allocated %4.2fMb for system and %4.2fMb for processing connection", MEGABYTES_FROM_BYTES(memory_size), MEGABYTES_FROM_BYTES(memory_for_connection_size));
+                LOG("-------------- WELCOME --------------");
+
+                running = true;
             }
         }
 
@@ -486,8 +463,8 @@ int main()
             }
         }
 
-        LOG("Closing server socket (%d)", server.socket_fd);
-        close(server.socket_fd);
+        LOG("Closing server socket (%d)", server.webspider_socket.fd);
+        close(server.webspider_socket.fd);
     }
 
     {
@@ -495,9 +472,9 @@ int main()
         memory__copy(uds_name_cstr, server.config.unix_domain_socket.data, server.config.unix_domain_socket.size);
         unlink(uds_name_cstr);
     }
-    if (server.socket_for_inspector > 0)
+    if (server.inspector_socket.fd > 0)
     {
-        close(server.socket_for_inspector);
+        close(server.inspector_socket.fd);
     }
 
     server.async.destroy_context();
@@ -851,6 +828,8 @@ void respond_to_requst(webspider *server, int accepted_socket, http::request req
                 sb.append("\n");
                 sb.append("Such web page does not exist :(\n");
 
+                LOG("Sent 404 - Not Found");
+
                 response_size = sb.used;
             }
 
@@ -865,6 +844,14 @@ void respond_to_requst(webspider *server, int accepted_socket, http::request req
                     LOG("Sent back %lld bytes of http", bytes_sent);
                 }
             }
+        }
+    }
+    else if (request.type == http::POST)
+    {
+        if (string_id::from(request.url.path) == string_id::from("/message"))
+        {
+            LOG("INCOMING MESSAGE FROM A PERSON!!!");
+            LOG("> %*.s", request.body.size, request.body.data);
         }
     }
     else
@@ -1004,3 +991,4 @@ memory_block prepare_report(webspider *server)
 #include "async_queue_epoll.cpp"
 #endif
 
+#include "socket.cpp"

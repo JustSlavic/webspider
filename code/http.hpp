@@ -31,9 +31,10 @@ struct request
 
     http::url url;
     uint32 path_part_count;
-    string_view header_keys[16];
-    string_view header_vals[16];
+    string_view header_keys[32];
+    string_view header_vals[32];
     uint32 header_count;
+    string_view body;
 
     int serialize_to(memory_block);
     static http::request deserialize(memory_block);

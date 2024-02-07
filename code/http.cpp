@@ -38,6 +38,7 @@ int http::response::serialize_to(memory_block blk)
     return result;
 }
 
+bool32 is_eof(char c) { return (c == 0); }
 bool32 is_newline(char c) { return (c == '\n') || (c == '\r'); }
 bool32 is_ascii_semicolon(char c) { return (c == ':'); }
 bool32 is_space_or_slash_or_question(char c) { return (c == ' ') || (c == '/') || (c == '?'); }
@@ -98,6 +99,11 @@ http::request http::request::deserialize(memory_block blob)
             request.header_count += 1;
         }
     }
+
+    consume_while(&lexer, is_newline);
+
+    request.body.data = get_pointer(&lexer);
+    request.body.size = consume_until(&lexer, is_eof);
 
     return request;
 }

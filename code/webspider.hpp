@@ -6,6 +6,7 @@
 #include <logger.h>
 
 #include "gen/config.hpp"
+#include "socket.hpp"
 #include "http.hpp"
 #include "async_queue.hpp"
 
@@ -16,7 +17,7 @@ enum response_type
     SERVER_RESPONSE__DYNAMIC,
 };
 
-typedef http::response handle_request_cb(http::request);
+typedef http::response request_handler(http::request);
 struct response_data
 {
     union
@@ -26,14 +27,14 @@ struct response_data
             string_view filename;
             string_view content_type;
         };
-        handle_request_cb *cb;
+        request_handler *cb;
     };
 };
 
 struct webspider
 {
-    int socket_fd;
-    int socket_for_inspector;
+    web::socket webspider_socket;
+    web::socket inspector_socket;
 
     ::async async;
 
