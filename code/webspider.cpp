@@ -850,7 +850,7 @@ void respond_to_requst(webspider *server, int accepted_socket, http::request req
     {
         if (string_id::from(request.url.path) == string_id::from("/message"))
         {
-            LOG("INCOMING MESSAGE FROM A PERSON!!!");
+            LOG("INCOMING MESSAGE FROM g PERSON!!!");
             LOG("> %*.s", request.body.size, request.body.data);
         }
     }
