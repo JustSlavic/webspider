@@ -2,13 +2,12 @@
 #define WEBSPIDER_H
 
 #include <base.h>
-#include <array.h>
-#include <logger.h>
+#include <logger.hpp>
 
 #include "gen/config.hpp"
 #include "socket.hpp"
 #include "http.hpp"
-#include "async_queue.hpp"
+#include "async.hpp"
 
 
 enum response_type
@@ -33,22 +32,18 @@ struct response_data
 
 struct webspider
 {
-    web::socket webspider_socket;
-    web::socket inspector_socket;
+    web::listener webspider_listener;
+    web::listener inspector_listener;
 
     ::async async;
 
     memory_allocator webspider_allocator;
-    memory_allocator connection_allocator;
 
     // @todo: change string_id to http::url or something
     string_id     route_table__keys[64];
     response_type route_table__type[64];
     response_data route_table__vals[64];
     uint32        route_table__count;
-
-    ::config  config;
-    ::logger *logger;
 
     // array(uint32) ip_ban_list;
 };

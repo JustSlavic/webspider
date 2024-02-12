@@ -8,11 +8,6 @@
 namespace http
 {
 
-struct url
-{
-    string_view path;
-};
-
 enum request_type
 {
     NONE,
@@ -29,15 +24,17 @@ struct request
 {
     request_type type;
 
-    http::url url;
+    string_view url;
     uint32 path_part_count;
     string_view header_keys[32];
     string_view header_vals[32];
     uint32 header_count;
     string_view body;
 
-    int serialize_to(memory_block);
-    static http::request deserialize(memory_block);
+    int serialize_to(memory_buffer);
+    static http::request deserialize(memory_buffer);
+
+    string_view get_header_value(string_view key);
 };
 
 enum response_code
@@ -54,8 +51,8 @@ struct response
 {
     response_code code;
 
-    int serialize_to(memory_block);
-    static http::response deserialize(memory_block);
+    int serialize_to(memory_buffer);
+    static http::response deserialize(memory_buffer);
 };
 
 } // namespace http

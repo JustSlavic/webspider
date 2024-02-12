@@ -2,7 +2,11 @@
 #define WEB_SOCKET_HPP
 
 #include <base.h>
+#include <memory_bucket.hpp>
 #include <string_view.hpp>
+
+#include "http.hpp"
+#include "http_parser.hpp"
 
 #define IP4_ANY 0
 #define IP4(x, y, z, w) ((((uint8) w) << 24) | (((uint8) z) << 16) | (((uint8) y) << 8) | ((uint8) x))
@@ -13,26 +17,57 @@
 
 namespace web {
 
-struct address
+
+struct connection
 {
+    int fd;
     uint32 ip4;
     uint16 port;
+
+    memory_bucket buffer;
+    http_parser   parser;
+    http::request request;
+
+    enum result_code
+    {
+        RECEIVE__OK,
+        RECEIVE__DROP,
+        RECEIVE__ERROR,
+        RECEIVE__OVERFLOW,
+    };
+
+    struct receive_result
+    {
+        result_code code;
+        int bytes_received;
+    };
+
+    bool32 good();
+    bool32 fail();
+
+    receive_result receive(void *buffer, usize size);
+    int send(void *buffer, usize size);
+    int close();
 };
 
-struct socket
+struct listener
 {
     int fd;
 
-    static socket inet(address a);
-    static socket unix(string_view name);
+    static listener inet(uint32 ip4, uint16 port);
+    static listener unix(string_view name);
 
-    bool32 is_ok();
-    bool32 is_fail();
+    bool32 good();
+    bool32 fail();
+
     int listen(int32 backlog_size);
-    int make_nonblocking();
+    connection accept();
+    int close();
 };
 
 
 } // namespace web
+
+char const *to_cstring(web::connection::result_code c);
 
 #endif // WEB_SOCKET_HPP

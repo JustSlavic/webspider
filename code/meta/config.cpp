@@ -1,17 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <lexer.hpp>
 #include <acf.hpp>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <util.hpp>
 
 
 static char spaces[] = "                                                                ";
 
 
-memory_block load_file(memory_allocator allocator, char const *filename);
 void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32 name_count)
 {
     if (name_count == 1)
@@ -80,7 +81,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
     }
     if (name_count == 1)
     {
-        fprintf(h_file, "    static config load(memory_allocator, memory_block);\n};\n");
+        fprintf(h_file, "    static config load(memory_allocator, memory_buffer);\n};\n");
     }
     else
     {
@@ -90,15 +91,14 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
 
 int main()
 {
-    auto string_id_buffer = ALLOCATE_BUFFER_(mallocator(), MEGABYTES(1));
-    auto string_id_arena = make_memory_arena(string_id_buffer);
-    string_id::initialize(string_id_arena);
+    {
+        auto string_id_arena = mallocator().allocate_arena(MEGABYTES(1));
+        string_id::initialize(string_id_arena);
+    }
 
-    byte *memory = (byte *) malloc(MEGABYTES(1));
-    memory_block buffer = make_memory_block(memory, MEGABYTES(10));
-    memory_allocator arena = make_memory_arena(buffer);
+    memory_allocator arena = mallocator().allocate_arena(MEGABYTES(10));
 
-    memory_block source = load_file(arena, "../www/config.acf");
+    memory_buffer source = load_file(arena, "../www/config.acf");
 
     acf cfg = acf::parse(arena, source);
 
@@ -113,7 +113,7 @@ int main()
 
     fprintf(c_file, "#include \"config.hpp\"\n"
                     "\n"
-                    "config config::load(memory_allocator a, memory_block content)\n"
+                    "config config::load(memory_allocator a, memory_buffer content)\n"
                     "{\n"
                     "    config result;\n"
                     "    acf cfg = acf::parse(a, content);\n");
@@ -132,42 +132,10 @@ int main()
     return 0;
 }
 
-memory_block load_file(memory_allocator allocator, char const *filename)
-{
-    memory_block result = {};
 
-    int fd = open(filename, O_RDONLY, 0);
-    if (fd < 0)
-    {
-        return result;
-    }
-
-    struct stat st;
-    int ec = fstat(fd, &st);
-    if (ec < 0)
-    {
-        return result;
-    }
-
-    memory_block block = ALLOCATE_BUFFER(allocator, st.st_size);
-    if (block.memory != NULL)
-    {
-        uint32 bytes_read = read(fd, block.memory, st.st_size);
-        if (bytes_read < st.st_size)
-        {
-            DEALLOCATE_BLOCK(allocator, block);
-        }
-        else
-        {
-            result = block;
-        }
-    }
-
-    return result;
-}
-
-
-#include <memory_allocator.c>
+#include <memory_allocator.cpp>
 #include <string_id.cpp>
-#include <lexer.c>
+#include <lexer.cpp>
 #include <acf.cpp>
+#include <util.cpp>
+#include <memory_bucket.cpp>
