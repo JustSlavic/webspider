@@ -3,7 +3,8 @@
 #include <memory.h>
 #include <string_view.hpp>
 #include <string_builder.hpp>
-#include <memory_allocator.h>
+#include <memory_allocator.hpp>
+#include <util.hpp>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,9 +38,6 @@ struct cli_arguments
     char const *filename;
     char const *hostname;
 };
-
-
-memory_block load_file(memory_allocator allocator, char const *filename);
 
 
 int main(int argc, char **argv)
@@ -81,16 +79,16 @@ int main(int argc, char **argv)
         }
     }
 
-    memory_block payload = {};
+    memory_buffer payload = {};
     if (args.filename)
     {
         payload = load_file(mallocator(), args.filename);
     }
     else
     {
-        payload = ALLOCATE_BUFFER(mallocator(), KILOBYTES(1));
+        payload = mallocator().allocate_buffer(KILOBYTES(1));
 
-        auto sb = make_string_builder(payload);
+        auto sb = string_builder::from(payload);
         sb.append("GET / HTTP/1.1\n"
                   "User-Agent: kurl/0.0.0\n"
                   "Accept: */*\n");
@@ -139,7 +137,7 @@ int main(int argc, char **argv)
         }
         else
         {
-            int bytes_sent = send(webspider_fd, payload.memory, payload.size - 1, 0);
+            int bytes_sent = send(webspider_fd, payload.data, payload.size - 1, 0);
             if (bytes_sent < 0)
             {
                 printf("Could not send payload (errno: %d - \"%s\")\n", errno, strerror(errno));
@@ -157,42 +155,8 @@ int main(int argc, char **argv)
     return 0;
 }
 
-memory_block load_file(memory_allocator allocator, char const *filename)
-{
-    memory_block result = {};
 
-    int fd = open(filename, O_RDONLY, 0);
-    if (fd < 0)
-    {}
-    else
-    {
-        struct stat st;
-        int ec = fstat(fd, &st);
-        if (ec < 0)
-        {}
-        else
-        {
-            memory_block block = ALLOCATE_BUFFER(allocator, st.st_size + 1);
-            if (block.memory != NULL)
-            {
-                uint32 bytes_read = read(fd, block.memory, st.st_size);
-                if (bytes_read < st.st_size)
-                {
-                    DEALLOCATE_BLOCK(allocator, block);
-                }
-                else
-                {
-                    result = block;
-                }
-            }
-        }
-        close(fd);
-    }
-
-    return result;
-}
-
-
-#include <memory_allocator.c>
+#include <memory_allocator.cpp>
 #include <string_builder.cpp>
-
+#include <util.cpp>
+#include <memory_bucket.cpp>
