@@ -67,7 +67,6 @@ async::register_result async::register_listener(web::listener listener, int even
     }
 
     return result;
-
 }
 
 async::register_result async::register_connection(web::connection connection, int event_type)

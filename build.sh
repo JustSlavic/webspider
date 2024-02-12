@@ -50,7 +50,7 @@ function build() {
         Darwin | Linux)
             build_cfg="$COMPILER code/meta/config.cpp -o bin/config -std=$STANDARD -I code/based $WARNINGS $DEBUG"
             build_ "$build_cfg"
-
+            
             $(cd code; ../bin/config)
 
             build_webspider="$COMPILER code/webspider.cpp -o bin/$PROJECT -std=$STANDARD -I code/based $LIBS $WARNINGS $DEBUG $COMPILE_DB_JSON"
