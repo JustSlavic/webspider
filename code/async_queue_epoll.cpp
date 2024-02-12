@@ -4,17 +4,18 @@
 #include <sys/time.h>
 
 
-struct async_context
+struct async_impl
 {
     int queue_fd;
-    async::event registered_events[MAX_EVENTS];
+    async::event registered_listeners[ASYNC_MAX_LISTENERS];
+    async::event registered_connections[ASYNC_MAX_CONNECTIONS];
 };
 
 
 async async::create_context()
 {
     async result;
-    result.impl = ALLOCATE(mallocator(), async_context);
+    result.impl = mallocator().allocate<async_impl>();
     if (result.impl)
     {
         result.impl->queue_fd = epoll_create1(0);
@@ -30,34 +31,25 @@ bool32 async::is_valid()
 void async::destroy_context()
 {
     close(impl->queue_fd);
-    DEALLOCATE(mallocator(), impl);
+    mallocator().deallocate(impl, sizeof(async_impl));
 }
 
-int async::register_socket_for_async_io(int socket, int event_type)
+async::register_result async::register_listener(web::listener listener, int event_type)
 {
-    int result = -2;
-    for (usize i = 0; i < ARRAY_COUNT(impl->registered_events); i++)
+    register_result result = REG_NO_SLOTS;
+    for (int i = 0; i < ASYNC_MAX_LISTENERS; i++)
     {
-        async::event *event = impl->registered_events + i;
+        async::event *event = impl->registered_listeners + i;
         if (event->type == async::EVENT__NONE)
         {
-            bool to_read  = ((event_type & async::EVENT__CONNECTION) != 0) ||
-                            ((event_type & async::EVENT__MESSAGE_IN) != 0);
-            bool to_write = ((event_type & async::EVENT__MESSAGE_OUT) != 0);
-
-            int event_types = 0;
-            if (to_read && to_write) event_types = EPOLLIN | EPOLLOUT;
-            else if (!to_read && to_write) event_types = EPOLLOUT;
-            else if (to_read && !to_write) event_types = EPOLLIN;
-
             struct epoll_event reg_event;
-            reg_event.events  = event_types;
-            reg_event.data.fd = socket;
+            reg_event.events  = EPOLLIN;
+            reg_event.data.fd = listener.fd;
 
-            result = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, socket, &reg_event);
-            if (result < 0)
+            result = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, listener.fd, &reg_event);
+            if (ec < 0)
             {
-                printf("Could not register, epoll failed (errno: %d - \"%s\")\n", errno, strerror(errno));
+                result = REG_FAILED;
             }
             else
             {
@@ -65,8 +57,11 @@ int async::register_socket_for_async_io(int socket, int event_type)
                 gettimeofday(&tv, NULL);
 
                 event->type = event_type;
-                event->fd = socket;
-                event->timestamp = 1000000LLU * tv.tv_sec + tv.tv_usec;
+                event->listener = listener;
+                event->update_time = 1000000LLU * tv.tv_sec + tv.tv_usec;
+                event->create_time = 1000000LLU * tv.tv_sec + tv.tv_usec;
+
+                result = REG_SUCCESS;
             }
             break;
         }
@@ -75,11 +70,54 @@ int async::register_socket_for_async_io(int socket, int event_type)
     return result;
 }
 
+async::register_result async::register_connection(web::connection connection, int event_type)
+{
+    register_result result = REG_NO_SLOTS;
+    for (int i = 0; i < ASYNC_MAX_CONNECTIONS; i++)
+    {
+        async::event *event = impl->registered_connections + i;
+        if (event->type == async::EVENT__NONE)
+        {
+            struct epoll_event reg_event;
+            reg_event.events  = EPOLLIN;
+            reg_event.data.fd = connection.fd;
+
+            result = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, connection.fd, &reg_event);
+            if (ec < 0)
+            {
+                result = REG_FAILED;
+            }
+            else
+            {
+                struct timeval tv;
+                gettimeofday(&tv, NULL);
+
+                event->type = event_type;
+                event->connection = connection;
+                event->update_time = 1000000LLU * tv.tv_sec + tv.tv_usec;
+                event->create_time = 1000000LLU * tv.tv_sec + tv.tv_usec;
+
+                result = REG_SUCCESS;
+            }
+            break;
+        }
+    }
+
+    return result;
+}
+
+
 int async::unregister(async::event *event)
 {
-    close(event->fd);
-    memory__set(event, 0, sizeof(event));
-
+    if (e->is(EVENT__CONNECTION))
+    {
+        close(e->connection.fd);
+    }
+    else if (e->is(EVENT__LISTENER))
+    {
+        close(e->listener.fd);
+    }
+    memory__set(e, 0, sizeof(async::event));
     return 0;
 }
 
@@ -91,11 +129,20 @@ async::wait_result async::wait_for_events(int milliseconds)
     int event_count = epoll_wait(impl->queue_fd, &incoming_event, 1, milliseconds);
     if (event_count > 0)
     {
-        for (usize i = 0; i < ARRAY_COUNT(impl->registered_events); i++)
+        for (usize i = 0; i < ARRAY_COUNT(impl->registered_listeners); i++)
         {
-            if (impl->registered_events[i].fd == incoming_event.data.fd)
+            if (impl->registered_listeners[i].fd == incoming_event.data.fd)
             {
-                result.events = impl->registered_events + i;
+                result.events = impl->registered_listeners + i;
+                result.event_count = 1;
+                break;
+            }
+        }
+        for (usize i = 0; i < ARRAY_COUNT(impl->registered_connections); i++)
+        {
+            if (impl->registered_connections[i].fd == incoming_event.data.fd)
+            {
+                result.events = impl->registered_connections + i;
                 result.event_count = 1;
                 break;
             }
@@ -113,18 +160,17 @@ async::prune_result async::prune(uint64 microseconds)
     gettimeofday(&tv, NULL);
     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
-    for (usize i = 0; i < ARRAY_COUNT(impl->registered_events); i++)
+    for (int i = 0; i < ASYNC_MAX_CONNECTIONS; i++)
     {
-        async::event *event = impl->registered_events + i;
-
-        if (event->is(async::EVENT__MESSAGE_IN))
+        async::event *event = impl->registered_connections + i;
+        if (event->is(async::EVENT__CONNECTION))
         {
-            uint64 dt = now - event->timestamp;
+            uint64 dt = now - event->update_time;
             if (dt > microseconds)
             {
-                result.fds[result.pruned_count++] = event->fd;
+                result.fds[result.pruned_count++] = event->connection.fd;
 
-                close(event->fd);
+                close(event->connection.fd);
                 memory__set(event, 0, sizeof(event));
             }
         }
@@ -132,7 +178,6 @@ async::prune_result async::prune(uint64 microseconds)
 
     return result;
 }
-
 
 async::report_result async::report()
 {
