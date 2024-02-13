@@ -293,15 +293,17 @@ int main()
                         auto res = process_connection(&ctx, &server, connection);
                         if (res == KEEP_CONNECTION)
                         {
-                            int register_result = server.async.register_connection(connection,
+                            async::register_result reg_result = server.async.register_connection(connection,
                                 async::EVENT__CONNECTION | async::EVENT__INET_DOMAIN);
-                            if (register_result < 0)
+                            if (reg_result == async::REG_FAILED)
                             {
-                                if (register_result == -2)
-                                    LOG("Error coult not add to the async queue because all %d slots in the array are occupied", ASYNC_MAX_CONNECTIONS);
-                                if (register_result == -1)
-                                    LOG("Error queue__register (errno: %d - \"%s\")", errno, strerror(errno));
-
+                                LOG("Error queue__register (errno: %d - \"%s\")", errno, strerror(errno));
+                                LOG("close (socket: %d)", connection.fd);
+                                connection.close();
+                            }
+                            else if (reg_result == async::REG_NO_SLOTS)
+                            {
+                                LOG("Error coult not add to the async queue because all %d slots in the array are occupied", ASYNC_MAX_CONNECTIONS);
                                 LOG("close (socket: %d)", connection.fd);
                                 connection.close();
                             }
@@ -310,16 +312,12 @@ int main()
                                 LOG("Added to async queue");
                             }
                         }
-                        else if (res == CLOSE_CONNECTION)
+                        else // if (res == CLOSE_CONNECTION)
                         {
                             LOG("Deallocating memory back to webspider allocator");
                             server.webspider_allocator.deallocate(event->connection.buffer.get_buffer());
                             LOG("close (socket: %d)", connection.fd);
                             connection.close();
-                        }
-                        else
-                        {
-                            ASSERT_FAIL();
                         }
                     }
                     else if (event->is(async::EVENT__CONNECTION))
@@ -333,13 +331,9 @@ int main()
                             LOG("close (socket: %d)", event->connection.fd);
                             event->connection.close();
                         }
-                        else if (res == KEEP_CONNECTION)
+                        else // if (res == KEEP_CONNECTION)
                         {
                             // Do nothing, just keep waiting for more messages
-                        }
-                        else
-                        {
-                            ASSERT_FAIL();
                         }
                     }
                 }
@@ -647,13 +641,9 @@ process_connection_result process_connection(context *ctx, webspider *server, we
     {
         return CLOSE_CONNECTION;
     }
-    else if (rres.code == web::connection::RECEIVE__OVERFLOW)
+    else // if (rres.code == web::connection::RECEIVE__OVERFLOW)
     {
         return CLOSE_CONNECTION;
-    }
-    else
-    {
-        ASSERT_FAIL();
     }
     return CLOSE_CONNECTION;
 }

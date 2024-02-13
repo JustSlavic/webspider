@@ -19,13 +19,10 @@ int http_parser::parse_request(void *buffer, usize size, http::request & request
 {
     auto l = lexer::from(buffer, size);
 
-    if (status == IDLE) goto http_parser__idle;
     if (status == PARSING_START_LINE) goto http_parser__start_line;
     if (status == PARSING_HEADERS) goto http_parser__headers;
     if (status == PARSING_BODY) goto http_parser__body;
 
-http_parser__idle: status = IDLE;
-    // Do nothing?
 http_parser__start_line: status = PARSING_START_LINE;
     {
         request.type = l.eat_string("GET") ? http::GET :

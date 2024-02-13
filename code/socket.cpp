@@ -89,7 +89,7 @@ web::connection::receive_result web::connection::receive(void *buffer, usize siz
             result.bytes_received = 0;
             break;
         }
-        else if (bytes_received < 0)
+        else // if (bytes_received < 0)
         {
             result.bytes_received = bucket.used;
             if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -103,10 +103,6 @@ web::connection::receive_result web::connection::receive(void *buffer, usize siz
                 result.code = RECEIVE__ERROR;
             }
             break;
-        }
-        else
-        {
-            ASSERT_FAIL();
         }
     }
 

@@ -161,7 +161,7 @@ async::prune_result async::prune(uint64 microseconds)
                 result.fds[result.pruned_count++] = event->connection.fd;
 
                 close(event->connection.fd);
-                memory__set(event, 0, sizeof(event));
+                memory__set(event, 0, sizeof(async::event));
             }
         }
     }
