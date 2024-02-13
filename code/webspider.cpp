@@ -142,6 +142,7 @@ int main()
     webspider server;
     server.async = {};
     server.webspider_allocator = global_arena;
+    server.connection_pool_allocator = global_arena.allocate_pool(MEGABYTES(5), KILOBYTES(4));
     server.route_table__count = 0;
 
     {
@@ -290,7 +291,7 @@ int main()
                         web::connection connection = event->listener.accept();
                         LOG("Accepted connection: (fd: %d)", connection.fd);
                         connection.buffer = memory_bucket::from(
-                            server.webspider_allocator.allocate_buffer(KILOBYTES(5)));
+                            server.connection_pool_allocator.allocate_buffer(KILOBYTES(5)));
                         LOG("Allocated %4.2fKb from webspider allocator", KILOBYTES_FROM_BYTES(connection.buffer.size));
 
                         auto res = process_connection(&ctx, &server, connection);
@@ -318,7 +319,7 @@ int main()
                         else // if (res == CLOSE_CONNECTION)
                         {
                             LOG("Deallocating memory back to webspider allocator");
-                            server.webspider_allocator.deallocate(event->connection.buffer.get_buffer());
+                            server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
                             LOG("close (socket: %d)", connection.fd);
                             connection.close();
                         }
@@ -329,7 +330,7 @@ int main()
                         if (res == CLOSE_CONNECTION)
                         {
                             LOG("Deallocating memory back to webspider allocator");
-                            server.webspider_allocator.deallocate(event->connection.buffer.get_buffer());
+                            server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
                             server.async.unregister(event);
                             LOG("close (socket: %d)", event->connection.fd);
                             event->connection.close();

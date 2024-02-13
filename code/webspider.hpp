@@ -38,6 +38,7 @@ struct webspider
     ::async async;
 
     memory_allocator webspider_allocator;
+    memory_allocator connection_pool_allocator;
 
     // @todo: change string_id to http::url or something
     string_id     route_table__keys[64];
