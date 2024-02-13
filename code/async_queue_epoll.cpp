@@ -82,7 +82,7 @@ async::register_result async::register_connection(web::connection connection, in
             reg_event.events  = EPOLLIN;
             reg_event.data.fd = connection.fd;
 
-            result = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, connection.fd, &reg_event);
+            ec = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, connection.fd, &reg_event);
             if (ec < 0)
             {
                 result = REG_FAILED;
@@ -131,7 +131,7 @@ async::wait_result async::wait_for_events(int milliseconds)
     {
         for (usize i = 0; i < ARRAY_COUNT(impl->registered_listeners); i++)
         {
-            if (impl->registered_listeners[i].fd == incoming_event.data.fd)
+            if (impl->registered_listeners[i].listener.fd == incoming_event.data.fd)
             {
                 result.event = impl->registered_listeners + i;
                 result.event_count = 1;
@@ -140,7 +140,7 @@ async::wait_result async::wait_for_events(int milliseconds)
         }
         for (usize i = 0; i < ARRAY_COUNT(impl->registered_connections); i++)
         {
-            if (impl->registered_connections[i].fd == incoming_event.data.fd)
+            if (impl->registered_connections[i].connection.fd == incoming_event.data.fd)
             {
                 result.event = impl->registered_connections + i;
                 result.event_count = 1;
