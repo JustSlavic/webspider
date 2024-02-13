@@ -48,6 +48,7 @@ enum process_connection_result
 
 process_connection_result process_connection(context *ctx, webspider *server, web::connection &c);
 void respond_to_requst(context *ctx, webspider *server, web::connection &c);
+void serve_static_file(context *ctx, webspider *server, web::connection &connection, char const *filename, char const *content_type);
 
 
 // @todo
@@ -267,11 +268,13 @@ int main()
                 if (prune_result.pruned_count > 0)
                 {
                     char buffer[1024] = {};
-                    uint32 cursor = 0;
-                    cursor += sprintf(buffer, "%d", prune_result.fds[0]);
-                    for (int i = 1; i < prune_result.pruned_count; i++)
                     {
-                        cursor += sprintf(buffer + cursor, ", %d", prune_result.fds[i]);
+                        auto bucket = memory_bucket::from(buffer, 1024);
+                        bucket.append("%d", prune_result.fds[0]);
+                        for (int i = 1; i < prune_result.pruned_count; i++)
+                        {
+                            bucket.append(", %d", prune_result.fds[i]);
+                        }
                     }
 
                     LOG("Pruned %d connections: %s", prune_result.pruned_count, buffer);
@@ -297,14 +300,14 @@ int main()
                                 async::EVENT__CONNECTION | async::EVENT__INET_DOMAIN);
                             if (reg_result == async::REG_FAILED)
                             {
-                                LOG("Error queue__register (errno: %d - \"%s\")", errno, strerror(errno));
-                                LOG("close (socket: %d)", connection.fd);
+                                LOG("Error: could not register connection to async queue (errno: %d - \"%s\")", errno, strerror(errno));
+                                LOG("close(%d)", connection.fd);
                                 connection.close();
                             }
                             else if (reg_result == async::REG_NO_SLOTS)
                             {
-                                LOG("Error coult not add to the async queue because all %d slots in the array are occupied", ASYNC_MAX_CONNECTIONS);
-                                LOG("close (socket: %d)", connection.fd);
+                                LOG("Error couldn't add to the async queue because all %d slots in the array are occupied", ASYNC_MAX_CONNECTIONS);
+                                LOG("close(%d)", connection.fd);
                                 connection.close();
                             }
                             else
@@ -333,7 +336,7 @@ int main()
                         }
                         else // if (res == KEEP_CONNECTION)
                         {
-                            // Do nothing, just keep waiting for more messages
+                            LOG("Processed new data on the connection, but it is not done yet, wait more");
                         }
                     }
                 }
@@ -368,50 +371,61 @@ int main()
     return 0;
 }
 
-// memory_block make_http_response(webspider *server, memory_allocator allocator, string_builder *sb)
-// {
-//     LOGGER(server);
-
-//     char const *filename = "../www/index.html";
-//     memory_block file = load_file(allocator, filename);
-//     if (file.memory == NULL)
-//     {
-//         LOG("Could not load file \"%s\"", filename);
-//     }
-//     else
-//     {
-//         sb->append(payload_template, file.size);
-//         sb->append(file);
-//     }
-
-//     return sb->get_string();
-// }
-
-void serve_static_file(context *ctx, webspider *server, web::connection &connection, char const *filename, char const *content_type)
+process_connection_result process_connection(context *ctx, webspider *server, web::connection &c)
 {
     LOGGER(ctx);
 
-    auto response_memory = memory_bucket::from(connection.buffer.get_free());
-    auto f = file::open(filename);
-
-    response_memory.append("HTTP/1.1 200 OK\n");
-    response_memory.append("Content-Length: %d\n", f.size());
-    response_memory.append("Content-Type: %s\n", content_type);
-    response_memory.append("\n");
-
-    auto payload = response_memory.get_free();
-    isize payload_size = f.read(payload.data, payload.size);
-    response_memory.used += payload_size;
-
-    isize bytes_sent = send(connection.fd, response_memory.data, response_memory.used, 0);
-    if (bytes_sent < 0)
+    auto next_part = c.buffer.get_free();
+    web::connection::receive_result rres = c.receive(next_part.data, next_part.size);
+    if (rres.code == web::connection::RECEIVE__OK)
     {
-        LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+        LOG("Received %d bytes from connection", rres.bytes_received);
+        c.buffer.used += rres.bytes_received;
+
+        LOG("Http parser started in state '%s'", to_cstring(c.parser.status));
+        int parsed_bytes = c.parser.parse_request(next_part.data, rres.bytes_received, c.request);
+        if (parsed_bytes < rres.bytes_received)
+        {
+            LOG("Error: could not parse received data, just drop connection");
+            return CLOSE_CONNECTION;
+        }
+        LOG("After parsing that part, http parser stopped in state '%s'", to_cstring(c.parser.status));
+
+        auto content_length_str = c.request.get_header_value(string_view::from("Content-Length"));
+        int content_length = to_int(content_length_str.data, content_length_str.size);
+
+        LOG("Content-Length header gives off value '%d'", content_length);
+
+        if ((c.parser.status == http_parser::PARSING_BODY) &&
+            (c.request.body.size == (usize) content_length))
+        {
+            LOG("Parser reached body, and size of parsed body matches Content-Length");
+            LOG("Here's the full request text:");
+            LOG_UNTRUSTED(c.buffer.data, c.buffer.used);
+
+            respond_to_requst(ctx, server, c);
+            return CLOSE_CONNECTION;
+        }
+
+        LOG("Parsing did not reach body or did not parse enough of content-length (parsed %d bytes, content-length is %d bytes)", c.request.body.size, content_length);
+        return KEEP_CONNECTION;
     }
-    else
+    else if (rres.code == web::connection::RECEIVE__DROP)
     {
-        LOG("Sent back %lld bytes of http", bytes_sent);
+        LOG("Receive returned 0 that means that peer dropped connection");
+        return CLOSE_CONNECTION;
     }
+    else if (rres.code == web::connection::RECEIVE__ERROR)
+    {
+        LOG("Error: Could not receive any data from a connection (errno: %d - \"%s\")", errno, strerror(errno));
+        return CLOSE_CONNECTION;
+    }
+    else // if (rres.code == web::connection::RECEIVE__OVERFLOW)
+    {
+        LOG("Error: client sent me too long of a request, we drop such connections");
+        return CLOSE_CONNECTION;
+    }
+    return CLOSE_CONNECTION;
 }
 
 void respond_to_requst(context *ctx, webspider *server, web::connection &connection)
@@ -459,7 +473,7 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
                 response_memory.append("Content-Type: text/plain\n");
                 response_memory.append("\n");
                 response_memory.append("Such web page does not exist :(\n");
-                LOG("Sent 404 - Not Found");
+                LOG("Prepared HTTP 404 - Not Found");
             }
 
             {
@@ -502,6 +516,35 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
             LOG("Sent back 'fu' message over http", bytes_sent);
         }
         LOG("Did not recongnize http method - ignore request, just close connection!");
+    }
+}
+
+void serve_static_file(context *ctx, webspider *server, web::connection &connection, char const *filename, char const *content_type)
+{
+    LOGGER(ctx);
+
+    LOG("Serving static file \"%s\"", filename);
+
+    auto response_memory = memory_bucket::from(connection.buffer.get_free());
+    auto f = file::open(filename);
+
+    response_memory.append("HTTP/1.1 200 OK\n");
+    response_memory.append("Content-Length: %d\n", f.size());
+    response_memory.append("Content-Type: %s\n", content_type);
+    response_memory.append("\n");
+
+    auto payload = response_memory.get_free();
+    isize payload_size = f.read(payload.data, payload.size);
+    response_memory.used += payload_size;
+
+    isize bytes_sent = send(connection.fd, response_memory.data, response_memory.used, 0);
+    if (bytes_sent < 0)
+    {
+        LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+    }
+    else
+    {
+        LOG("Sent back %lld bytes of http", bytes_sent);
     }
 }
 
@@ -585,68 +628,6 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
 
 //     return sb.get_string();
 // }
-
-// 1. Accept connection
-//  ----
-// 2. Receive data
-// 3. Parse received data
-//     - check Content-Length
-//     -
-
-// 1. Get the connection from event
-//  ----
-// 2. Receive data
-// 3. Parse received data
-//    - check Content-Length
-
-
-process_connection_result process_connection(context *ctx, webspider *server, web::connection &c)
-{
-    LOGGER(ctx);
-
-    auto next_part = c.buffer.get_free();
-    web::connection::receive_result rres = c.receive(next_part.data, next_part.size);
-    if (rres.code == web::connection::RECEIVE__OK)
-    {
-        c.buffer.used += rres.bytes_received;
-
-        int parsed_bytes = c.parser.parse_request(next_part.data, rres.bytes_received, c.request);
-        if (parsed_bytes < rres.bytes_received)
-        {
-            LOG("Error: could not parse received data, just drop connection");
-            return CLOSE_CONNECTION;
-        }
-
-        auto content_length_str = c.request.get_header_value(string_view::from("Content-Length"));
-        int content_length = to_int(content_length_str.data, content_length_str.size);
-
-        if ((c.parser.status == http_parser::PARSING_BODY) &&
-            (c.request.body.size == (usize) content_length))
-        {
-            LOG("Parser reached body, and size of parsed body matches Content-Length");
-
-            LOG_UNTRUSTED(c.buffer.data, c.buffer.used);
-
-            respond_to_requst(ctx, server, c);
-            return CLOSE_CONNECTION;
-        }
-
-        return KEEP_CONNECTION;
-    }
-    else if (rres.code == web::connection::RECEIVE__DROP)
-    {
-        return CLOSE_CONNECTION;
-    }
-    else if (rres.code == web::connection::RECEIVE__ERROR)
-    {
-        return CLOSE_CONNECTION;
-    }
-    else // if (rres.code == web::connection::RECEIVE__OVERFLOW)
-    {
-        return CLOSE_CONNECTION;
-    }
-    return CLOSE_CONNECTION;
-}
 
 
 
