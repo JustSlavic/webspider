@@ -82,7 +82,7 @@ async::register_result async::register_connection(web::connection connection, in
             reg_event.events  = EPOLLIN;
             reg_event.data.fd = connection.fd;
 
-            ec = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, connection.fd, &reg_event);
+            int ec = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, connection.fd, &reg_event);
             if (ec < 0)
             {
                 result = REG_FAILED;
