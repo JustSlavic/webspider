@@ -46,7 +46,7 @@ async::register_result async::register_listener(web::listener listener, int even
             reg_event.events  = EPOLLIN;
             reg_event.data.fd = listener.fd;
 
-            result = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, listener.fd, &reg_event);
+            int ec = epoll_ctl(impl->queue_fd, EPOLL_CTL_ADD, listener.fd, &reg_event);
             if (ec < 0)
             {
                 result = REG_FAILED;
@@ -107,7 +107,7 @@ async::register_result async::register_connection(web::connection connection, in
 }
 
 
-int async::unregister(async::event *event)
+int async::unregister(async::event *e)
 {
     if (e->is(EVENT__CONNECTION))
     {
@@ -133,7 +133,7 @@ async::wait_result async::wait_for_events(int milliseconds)
         {
             if (impl->registered_listeners[i].fd == incoming_event.data.fd)
             {
-                result.events = impl->registered_listeners + i;
+                result.event = impl->registered_listeners + i;
                 result.event_count = 1;
                 break;
             }
@@ -142,7 +142,7 @@ async::wait_result async::wait_for_events(int milliseconds)
         {
             if (impl->registered_connections[i].fd == incoming_event.data.fd)
             {
-                result.events = impl->registered_connections + i;
+                result.event = impl->registered_connections + i;
                 result.event_count = 1;
                 break;
             }
@@ -182,7 +182,8 @@ async::prune_result async::prune(uint64 microseconds)
 async::report_result async::report()
 {
     report_result report;
-    memory__copy(report.events_in_work, impl->registered_events, sizeof(impl->registered_events));
+    memory__copy(report.listeners, impl->registered_listeners, sizeof(impl->registered_listeners));
+    memory__copy(report.connections, impl->registered_connections, sizeof(impl->registered_connections));
 
     return report;
 }

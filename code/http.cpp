@@ -110,7 +110,7 @@ http::request http::request::deserialize(memory_buffer blob)
 
 string_view http::request::get_header_value(string_view key)
 {
-    for (int header_index = 0; header_index < header_count; header_index++)
+    for (usize header_index = 0; header_index < header_count; header_index++)
     {
         if (header_keys[header_index] == key)
         {

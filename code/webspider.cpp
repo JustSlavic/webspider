@@ -627,7 +627,7 @@ process_connection_result process_connection(context *ctx, webspider *server, we
         int content_length = to_int(content_length_str.data, content_length_str.size);
 
         if ((c.parser.status == http_parser::PARSING_BODY) &&
-            (c.request.body.size == content_length))
+            (c.request.body.size == (usize) content_length))
         {
             LOG("Parser reached body, and size of parsed body matches Content-Length");
 
