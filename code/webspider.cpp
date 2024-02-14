@@ -418,6 +418,31 @@ process_connection_result process_connection(context *ctx, webspider *server, we
     }
     else // if (rres.code == web::connection::RECEIVE__OVERFLOW)
     {
+        char payload[] =
+            "HTTP/1.1 413 Request Entity Too Large\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: 135\r\n"
+            "\r\n"
+            "<!DOCTYPE html>\r\n"
+            "<html>\r\n"
+            "<head>\r\n"
+            "    <title>413 Request Entity Too Large</title>\r\n"
+            "</head>\r\n"
+            "<body>\r\n"
+            "    <h1>413 Request Entity Too Large</h1>\r\n"
+            "    <p>The request entity is too large and exceeds the server's configured limit. Please reduce the size of your request and try again.</p>\r\n"
+            "</body>\r\n"
+            "</html>\r\n";
+        isize bytes_sent = send(c.fd, payload, sizeof(payload) - 1, 0);
+        if (bytes_sent < 0)
+        {
+            LOG("Could not send anything back (errno: %d - \"%s\")", errno, strerror(errno));
+        }
+        else
+        {
+            LOG("Sent back 'fu' message over http", bytes_sent);
+        }
+
         LOG("Error: client sent me too long of a request, we drop such connections");
     }
     return CLOSE_CONNECTION;

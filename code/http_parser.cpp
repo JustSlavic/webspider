@@ -95,7 +95,8 @@ http_parser__body: status = PARSING_BODY;
     {
         char const *body = l.get_remaining_input();
         int bytes_consumed = l.consume_until(is_eof);
-        request.body = string_view::from(body, bytes_consumed);
+        if (request.body.data == NULL) request.body.data = body;
+        request.body.size += bytes_consumed;
     }
 stop_parsing:
 
