@@ -127,17 +127,17 @@ int main()
     auto global_arena = mallocator().allocate_arena(global_arena_size);
 
     context ctx;
+    {
+        auto config_data = load_file(mallocator(), "config.acf");
+        ctx.config = config::load(mallocator(), config_data);
+    }
 
     webspider server;
     server.async = {};
     server.webspider_allocator = global_arena;
-    server.connection_pool_allocator = global_arena.allocate_pool(MEGABYTES(5), KILOBYTES(12));
+    server.connection_pool_allocator = global_arena.allocate_pool(ctx.config.memory_usage, ctx.config.memory_usage_per_connection);
     server.route_table__count = 0;
 
-    {
-        auto config_data = load_file(server.webspider_allocator, "config.acf");
-        ctx.config = config::load(server.webspider_allocator, config_data);
-    }
 
     {
         auto mapping_data = load_file(server.webspider_allocator, "mapping.acf");
