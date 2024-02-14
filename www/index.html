@@ -30,8 +30,11 @@
         </section>
         <p>Send me a message!!!</p>
         <form action="/message" method="post">
-            <input type="text" name="PersonName">
-            <input type="text" name="MessageContent">
+            <label for="name">Your Name (optional):</label><br>
+            <input type="text" name="PersonName" style="margin-bottom: 10;"><br><br>
+
+            <label for="message">Message:</label><br>
+            <textarea name="MessageContent" rows="4" cols="50" required></textarea><br><br>
             <button type="submit">Send message</button>
         </form>
         <section class="block-section">

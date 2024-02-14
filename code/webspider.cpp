@@ -1,5 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
-
 // Based
 #include <base.h>
 #include <integer.h>
@@ -96,7 +94,7 @@ void log_untrusted_impl(logger *l, code_location cl, char const *buffer, usize s
         }
         else if ((cursor + 5) < ARRAY_COUNT(trusted))
         {
-            sprintf(trusted + cursor, "\\0x%02x", (int) (c & 0xff));
+            snprintf(trusted + cursor, KILOBYTES(4) - cursor, "\\0x%02x", (int) (c & 0xff));
             cursor += 5;
         }
         else
@@ -115,15 +113,6 @@ GLOBAL volatile bool running;
 void signal__SIGINT(int dummy) {
     running = false;
 }
-
-
-//
-// 0----+--------------------+-+---------------------------------->
-//       \                  /   \                           /
-//        +--+-allocate-+--+     +--+-allocate-+-+-respond-+
-//           |  recv_1  |           |  recv_1  |
-//           |          |           |  recv_2  |
-//           +----------+           +----------+
 
 
 int main()
