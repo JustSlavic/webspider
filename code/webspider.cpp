@@ -369,6 +369,12 @@ process_connection_result process_connection(context *ctx, webspider *server, we
     web::connection::receive_result rres = c.receive(next_part.data, next_part.size);
     if (rres.code == web::connection::RECEIVE__OK)
     {
+        if (rres.bytes_received == 0)
+        {
+            LOG("The message did not arrive yet. Wait for it a bit.");
+            return KEEP_CONNECTION;
+        }
+
         c.buffer.used += rres.bytes_received;
 
         LOG("Received %d bytes from connection", rres.bytes_received);
