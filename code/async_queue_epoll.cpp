@@ -111,11 +111,11 @@ int async::unregister(async::event *e)
 {
     if (e->is(EVENT__CONNECTION))
     {
-        close(e->connection.fd);
+        e->connection.close();
     }
     else if (e->is(EVENT__LISTENER))
     {
-        close(e->listener.fd);
+        e->listener.close();
     }
     memory__set(e, 0, sizeof(async::event));
     return 0;

@@ -309,7 +309,7 @@ int main()
                         {
                             LOG("Deallocating memory back to webspider allocator");
                             server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
-                            LOG("close (socket: %d)", connection.fd);
+                            LOG("close(%d)", connection.fd);
                             connection.close();
                         }
                     }
@@ -318,11 +318,13 @@ int main()
                         auto res = process_connection(&ctx, &server, event->connection);
                         if (res == CLOSE_CONNECTION)
                         {
+                            LOG("EVENT__CONNECTION: connection{fd=%d; buffer={%p, %llu}}",
+                                event->connection.fd, event->connection.buffer.data, event->connection.buffer.size);
+
                             LOG("Deallocating memory back to webspider allocator");
                             server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
+                            LOG("unregister connection(%d)", event->connection.fd);
                             server.async.unregister(event);
-                            LOG("close (socket: %d)", event->connection.fd);
-                            event->connection.close();
                         }
                         else // if (res == KEEP_CONNECTION)
                         {
@@ -353,6 +355,7 @@ int main()
     }
     if (server.inspector_listener.good())
     {
+        LOG("Closing inspector (socket: %d)", server.inspector_listener.fd);
         server.inspector_listener.close();
     }
 
@@ -408,17 +411,14 @@ process_connection_result process_connection(context *ctx, webspider *server, we
     else if (rres.code == web::connection::RECEIVE__DROP)
     {
         LOG("Receive returned 0 that means that peer dropped connection");
-        return CLOSE_CONNECTION;
     }
     else if (rres.code == web::connection::RECEIVE__ERROR)
     {
         LOG("Error: Could not receive any data from a connection (errno: %d - \"%s\")", errno, strerror(errno));
-        return CLOSE_CONNECTION;
     }
     else // if (rres.code == web::connection::RECEIVE__OVERFLOW)
     {
         LOG("Error: client sent me too long of a request, we drop such connections");
-        return CLOSE_CONNECTION;
     }
     return CLOSE_CONNECTION;
 }
@@ -455,6 +455,8 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
                         isize payload_size = f.read(payload.data, payload.size);
                         response_memory.used += payload_size;
                         ok = true;
+
+                        f.close();
                     }
                     break;
                 }
@@ -489,8 +491,14 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
         if (string_id::from(connection.request.url) == string_id::from("/message"))
         {
             LOG("INCOMING MESSAGE FROM A PERSON!!!");
-            LOG_UNTRUSTED(connection.request.body.data, connection.request.body.size);
 
+            int fd = open("messages.txt", O_WRONLY | O_APPEND | O_CREAT, 0644);
+            if (fd < 0) LOG("COULD NOT OPEN FILE (errno: %d - \"%s\")", errno, strerror(errno));
+            auto written = write(fd, connection.request.body.data,
+                                     connection.request.body.size);
+            write(fd, "\n\n", 2);
+            if (written < 0) LOG("COULD NOT WRITE FILE (errno: %d - \"%s\")", errno, strerror(errno));
+            else LOG("Written %lld bytes to \"message.txt\"", written);
             serve_static_file(ctx, server, connection, "redirect.html", "text/html");
         }
     }
@@ -530,6 +538,8 @@ void serve_static_file(context *ctx, webspider *server, web::connection &connect
 
     auto payload = response_memory.get_free();
     isize payload_size = f.read(payload.data, payload.size);
+    f.close();
+
     response_memory.used += payload_size;
 
     isize bytes_sent = send(connection.fd, response_memory.data, response_memory.used, 0);
