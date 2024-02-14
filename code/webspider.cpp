@@ -131,7 +131,7 @@ int main()
     webspider server;
     server.async = {};
     server.webspider_allocator = global_arena;
-    server.connection_pool_allocator = global_arena.allocate_pool(MEGABYTES(5), KILOBYTES(4));
+    server.connection_pool_allocator = global_arena.allocate_pool(MEGABYTES(5), KILOBYTES(12));
     server.route_table__count = 0;
 
     {
@@ -369,8 +369,10 @@ process_connection_result process_connection(context *ctx, webspider *server, we
     web::connection::receive_result rres = c.receive(next_part.data, next_part.size);
     if (rres.code == web::connection::RECEIVE__OK)
     {
-        LOG("Received %d bytes from connection", rres.bytes_received);
         c.buffer.used += rres.bytes_received;
+
+        LOG("Received %d bytes from connection", rres.bytes_received);
+        LOG_UNTRUSTED(next_part.data, rres.bytes_received);
 
         LOG("Http parser started in state '%s'", to_cstring(c.parser.status));
         int parsed_bytes = c.parser.parse_request(next_part.data, rres.bytes_received, c.request);
@@ -390,9 +392,6 @@ process_connection_result process_connection(context *ctx, webspider *server, we
             (c.request.body.size == (usize) content_length))
         {
             LOG("Parser reached body, and size of parsed body matches Content-Length");
-            LOG("Here's the full request text:");
-            LOG_UNTRUSTED(c.buffer.data, c.buffer.used);
-
             respond_to_requst(ctx, server, c);
             return CLOSE_CONNECTION;
         }

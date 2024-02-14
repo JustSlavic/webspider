@@ -30,18 +30,20 @@
         </section>
         <p>Send me a message!!!</p>
         <form action="/message" method="post">
-            <label for="name">Your Name (optional):</label><br>
-            <input type="text" name="PersonName" style="margin-bottom: 10;"><br><br>
+            <label for="nameinput">Your Name (optional):</label><br>
+            <input id="nameinput" type="text" name="PersonName" style="margin-bottom: 10;"><br><br>
 
-            <label for="message">Message:</label><br>
-            <textarea name="MessageContent" rows="4" cols="50" required></textarea><br><br>
+            <label for="messagebox">Message:</label><br>
+            <textarea id="messagebox" name="MessageContent" rows="4" cols="50" required></textarea><br><br>
             <button type="submit">Send message</button>
         </form>
         <section class="block-section">
             <p class="body-text">
-                Welcome to my homepage. I have a couple of funny things here: 1)
-                <a href="/life">something that looks like life</a>.
-                2) Я не придумал
+                Welcome to my homepage. I have a couple of funny things here:
+                <ol class="body-text">
+                    <li><a href="/life">Something that looks like life</a>.</li>
+                    <li>Я не придумал</li>
+                </ol>
             </p>
         </section>
         <section class="block-section">
