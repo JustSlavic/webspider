@@ -10,6 +10,7 @@
 #include <acf.hpp>
 #include <util.hpp>
 #include <fs.hpp>
+#include <web.hpp>
 
 // *nix
 #include <unistd.h>
@@ -318,9 +319,6 @@ int main()
                         auto res = process_connection(&ctx, &server, event->connection);
                         if (res == CLOSE_CONNECTION)
                         {
-                            LOG("EVENT__CONNECTION: connection{fd=%d; buffer={%p, %llu}}",
-                                event->connection.fd, event->connection.buffer.data, event->connection.buffer.size);
-
                             LOG("Deallocating memory back to webspider allocator");
                             server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
                             LOG("unregister connection(%d)", event->connection.fd);
@@ -440,7 +438,7 @@ process_connection_result process_connection(context *ctx, webspider *server, we
         }
         else
         {
-            LOG("Sent back 'fu' message over http", bytes_sent);
+            LOG("Sent back '413 - Request Entity Too Large' message over http", bytes_sent);
         }
 
         LOG("Error: client sent me too long of a request, we drop such connections");
@@ -519,8 +517,11 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
 
             int fd = open("messages.txt", O_WRONLY | O_APPEND | O_CREAT, 0644);
             if (fd < 0) LOG("COULD NOT OPEN FILE (errno: %d - \"%s\")", errno, strerror(errno));
-            auto written = write(fd, connection.request.body.data,
-                                     connection.request.body.size);
+
+            auto decoded = server->connection_pool_allocator.allocate_buffer(KILOBYTES(4));
+            int decoded_size = web::url_decode(memory_buffer::from((void *) connection.request.body.data, connection.request.body.size), decoded);
+
+            auto written = write(fd, decoded.data, decoded_size);
             write(fd, "\n\n", 2);
             if (written < 0) LOG("COULD NOT WRITE FILE (errno: %d - \"%s\")", errno, strerror(errno));
             else LOG("Written %lld bytes to \"message.txt\"", written);
@@ -668,6 +669,7 @@ void serve_static_file(context *ctx, webspider *server, web::connection &connect
 #include <acf.cpp>
 #include <util.cpp>
 #include <fs.cpp>
+#include <web.cpp>
 
 #include "http.cpp"
 #include "gen/version.c"
