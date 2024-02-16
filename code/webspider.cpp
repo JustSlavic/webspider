@@ -48,6 +48,7 @@ enum process_connection_result
 process_connection_result process_connection(context *ctx, webspider *server, web::connection &c);
 void respond_to_requst(context *ctx, webspider *server, web::connection &c);
 void serve_static_file(context *ctx, webspider *server, web::connection &connection, char const *filename, char const *content_type);
+memory_bucket prepare_report(webspider *server);
 
 
 // @todo
@@ -334,6 +335,21 @@ int main()
                 {
                     if (event->is(async::EVENT__LISTENER))
                     {
+                        auto conn = event->listener.accept();
+
+                        char buffer[512];
+                        int received_bytes = recv(conn.fd, buffer, sizeof(buffer), 0);
+                        if (received_bytes < 0)
+                        {
+                            LOG("Could not receive request from Unix Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
+                        }
+                        auto report = prepare_report(&server);
+                        int sent_bytes = send(conn.fd, report.data, report.used, 0);
+                        if (sent_bytes < 0)
+                        {
+                            LOG("Could not send report to Unix Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
+                        }
+                        mallocator().deallocate(report.data, report.size);
                     }
                     else if (event->is(async::EVENT__CONNECTION))
                     {
@@ -579,86 +595,102 @@ void serve_static_file(context *ctx, webspider *server, web::connection &connect
     }
 }
 
-// memory_block prepare_report(webspider *server)
-// {
-//     // @todo: move this "rendering" part to the inspector,
-//     // It is more convinient to pass only data;
-//     char spaces[]  = "                                        ";
-//     char squares[] = "########################################";
+memory_bucket prepare_report(webspider *server)
+{
+    // @todo: move this "rendering" part to the inspector,
+    // It is more convinient to pass only data;
+    char spaces[]  = "                                        ";
+    char squares[] = "########################################";
 
-//     struct memory_allocator__report m_report1 = memory_allocator__report(server->webspider_allocator);
-//     int n_spaces1 = truncate_to_int32(40.0f * m_report1.used / m_report1.size);
+    auto report1 = server->webspider_allocator.get_report();
+    int n_spaces1 = truncate_to_int32(40.0f * report1.used / report1.size);
+    auto report2 = server->connection_pool_allocator.get_report();
+    int n_spaces2 = truncate_to_int32(40.0f * report2.used / report2.size);
 
-//     struct memory_allocator__report m_report2 = memory_allocator__report(server->connection_allocator);
-//     int n_spaces2 = truncate_to_int32(40.0f * m_report2.used / m_report2.size);
+    auto report = server->async.report();
 
-//     auto report = server->async.report();
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
-//     struct timeval tv;
-//     gettimeofday(&tv, NULL);
-//     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
+    auto buffer = mallocator().allocate_buffer(KILOBYTES(3));
+    auto sb = memory_bucket::from(buffer);
 
-//     string_builder sb = make_string_builder(ALLOCATE_BUFFER(server->connection_allocator, KILOBYTES(1)));
-//     sb.append("           Webspider v%s\n", version);
-//     sb.append("Connections done: %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
-//     sb.append("========= MEMORY ALLOCATOR REPORT ========\n");
-//     sb.append("webspider allocator: %llu / %llu bytes used;\n", m_report1.used, m_report1.size);
-//     sb.append("+----------------------------------------+\n");
-//     sb.append("|%.*s%.*s|\n", n_spaces1, squares, 40 - n_spaces1, spaces);
-//     sb.append("+----------------------------------------+\n");
-//     sb.append("connection allocator: %llu / %llu bytes used;\n", m_report2.used, m_report2.size);
-//     sb.append("+----------------------------------------+\n");
-//     sb.append("|%.*s%.*s|\n", n_spaces2, squares, 40 - n_spaces2, spaces);
-//     sb.append("+----------------------------------------+\n");
-//     sb.append("==========================================\n");
-//     sb.append("ASYNC QUEUE BUFFER:                created         updated\n");
-//     for (usize i = 0; i < ARRAY_COUNT(report.events_in_work); i++)
-//     {
-//         async::event *e = report.events_in_work + i;
+    sb.append("           Webspider v%s\n", version);
+    // sb.append("Connections done: %llu at rate (%4.2f / sec)\n", connections_done, connections_per_second);
+    sb.append("========= MEMORY ALLOCATOR REPORT ========\n");
+    sb.append("webspider allocator: %llu / %llu bytes used;\n", report1.used, report1.size);
+    sb.append("+----------------------------------------+\n");
+    sb.append("|%.*s%.*s|\n", n_spaces1, squares, 40 - n_spaces1, spaces);
+    sb.append("+----------------------------------------+\n");
+    sb.append("connection allocator: %llu / %llu bytes used; size of chunk = %d; chunks used: %d / %d\n",
+        report2.used, report2.size,
+        report2.chunk_size, report2.chunks_used, report2.chunk_count);
+    sb.append("+----------------------------------------+\n");
+    sb.append("|%.*s%.*s|\n", n_spaces2, squares, 40 - n_spaces2, spaces);
+    sb.append("+----------------------------------------+\n");
+    sb.append("==========================================\n");
+    sb.append("ASYNC SERVER BUFFER:               created         updated\n");
+    for (usize i = 0; i < ASYNC_MAX_LISTENERS; i++)
+    {
+        async::event *e = report.listeners + i;
+        if (e->listener.fd <= 0)
+        {
+            continue;
+        }
+        sb.append("%2d)", i+1);
+        sb.append(" [%5d]", e->listener.fd);
+        sb.append(" %s | %s",
+            e->is(async::EVENT__INET_DOMAIN) ? "INET" :
+            e->is(async::EVENT__UNIX_DOMAIN) ? "UNIX" : "????",
+            e->is(async::EVENT__LISTENER) ? "SERVER    " :
+            e->is(async::EVENT__CONNECTION) ? "CONNECTION" : "   ???    ");
+        float32 dt_create = (float32) (now - e->create_time) / 1000000.f;
+        float32 dt_update = (float32) (now - e->update_time) / 1000000.f;
+        sb.append(" %10.2fs ago %10.2fs ago\n", dt_create, dt_update);
+    }
 
-//         if (e->type == 0)
-//         {
-//             int n_empty_entries = 0;
-//             for (usize j = i; j < ARRAY_COUNT(report.events_in_work); j++)
-//             {
-//                 async::event *q = report.events_in_work + i;
+    sb.append("CONNECTION SOCKETS:                created         updated\n");
+    for (usize i = 0; i < ARRAY_COUNT(report.connections); i++)
+    {
+        async::event *e = report.connections + i;
 
-//                 if (q->type == 0) n_empty_entries += 1;
-//                 else break;
-//             }
+        // Skip empties
+        if (e->type == 0)
+        {
+            int n_empty_entries = 0;
+            for (usize j = i; j < ARRAY_COUNT(report.connections); j++)
+            {
+                async::event *q = report.connections + i;
+                if (q->type == 0) n_empty_entries += 1;
+                else break;
+            }
+            if (n_empty_entries > 2)
+            {
+                sb.append("...\n");
+                i += (n_empty_entries - 1);
+                continue;
+            }
+        }
 
-//             if (n_empty_entries > 2)
-//             {
-//                 sb.append("...\n");
-//                 i += (n_empty_entries - 1);
-//                 continue;
-//             }
-//         }
+        sb.append("%2d)", i+1);
+        if (e->listener.fd > 0)
+            sb.append(" [%5d]", e->listener.fd);
+        else
+            sb.append(" [     ]");
+        sb.append(" %s | %s",
+            e->is(async::EVENT__INET_DOMAIN) ? "INET" :
+            e->is(async::EVENT__UNIX_DOMAIN) ? "UNIX" : "????",
+            e->is(async::EVENT__LISTENER) ? "SERVER    " :
+            e->is(async::EVENT__CONNECTION) ? "CONNECTION" : "   ???    ");
+        float32 dt_create = (float32) (now - e->create_time) / 1000000.f;
+        float32 dt_update = (float32) (now - e->update_time) / 1000000.f;
+        sb.append(" %10.2fs ago %10.2fs ago\n", dt_create, dt_update);
+    }
+    sb.append("==========================================\n");
 
-//         sb.append("%2d)", i + 1);
-//         if (e->fd != 0)
-//         {
-//             sb.append(" [%5d]", e->fd);
-//         }
-//         else
-//         {
-//             sb.append(" [     ]");
-//         }
-//         if (e->type != 0)
-//         {
-//             sb.append(" %s | %s",
-//                 e->is(async::EVENT__INET_SOCKET) ? "INET" : "UNIX",
-//                 e->is(async::EVENT__CONNECTION) ? "CONNECTIONS " :
-//                 e->is(async::EVENT__MESSAGE_IN) ? "INCOMING MSG" : "OUTGOING MSG");
-//         }
-//         float32 dt_create = (float32) (now - e->create_time) / 1000000.f;
-//         float32 dt_update = (float32) (now - e->update_time) / 1000000.f;
-//         sb.append(" %10.2fs ago %10.2fs ago\n", dt_create, dt_update);
-//     }
-//     sb.append("==========================================\n");
-
-//     return sb.get_string();
-// }
+    return sb;
+}
 
 
 
