@@ -1,11 +1,25 @@
 #!/bin/bash
 
 set -e
+os_name=$(uname -s)
 
 PROJECT=webspider
 COMPILER=g++
 STANDARD=c++17
 COMPILE_COMMANDS_FILE=compile_commands.json
+
+case $os_name in
+        Darwin)
+            DEBUGGER=lldb
+            ;;
+        Linux)
+            DEBUGGER=gdb
+            ;;
+        *)
+            echo "Unrecognazied os name ($os_name)"
+            ;;
+esac
+
 
 mkdir -p bin
 
@@ -20,8 +34,6 @@ else
         subcommand="$2"
     fi
 fi
-
-os_name=$(uname -s)
 
 function build_() {
     $($1)
@@ -70,7 +82,11 @@ function build() {
 }
 
 function run() {
-    ( cd www && ../bin/webspider )
+    if [ "$command" = "run" ] && [ "$subcommand" = "debug" ]; then
+        ( cd www && $DEBUGGER ../bin/webspider )
+    else
+        ( cd www && ../bin/webspider )
+    fi
 }
 
 function pvs_analyze() {
