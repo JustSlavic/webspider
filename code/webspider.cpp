@@ -542,6 +542,8 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
             if (written < 0) LOG("COULD NOT WRITE FILE (errno: %d - \"%s\")", errno, strerror(errno));
             else LOG("Written %lld bytes to \"message.txt\"", written);
             serve_static_file(ctx, server, connection, "redirect.html", "text/html");
+
+            server->connection_pool_allocator.deallocate(decoded);
         }
     }
     else
