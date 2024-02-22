@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viacheslav's Super-Duper Chaotic Homepage</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <style>
+        /* Chaotic styles */
+        body {
+            font-family: "Comic Sans MS", cursive, sans-serif;
+            background: linear-gradient(to right, red, yellow, green, cyan, blue, purple);
+            animation: rainbow-bg 10s infinite alternate;
+            text-shadow: 2px 2px 2px black;
+        }
+
+        @keyframes rainbow-bg {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        header {
+            background-color: limegreen;
+            color: purple;
+            text-align: center;
+            padding: 50px 0;
+            border-bottom: 5px dashed yellow;
+        }
+
+        .main-header {
+            font-size: 4em;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            margin: 0;
+            animation: shake 0.5s infinite alternate;
+        }
+
+        @keyframes shake {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(5deg); }
+        }
+
+        main {
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.5);
+            color: black;
+            animation: rainbow-text 10s infinite alternate;
+        }
+
+        @keyframes rainbow-text {
+            0% { color: red; }
+            20% { color: orange; }
+            40% { color: yellow; }
+            60% { color: green; }
+            80% { color: blue; }
+            100% { color: purple; }
+        }
+
+        section {
+            border: 2px solid blue;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+            animation: shake 0.5s infinite alternate;
+        }
+
+        .section-header {
+            color: red;
+            font-size: 2em;
+            text-decoration: underline;
+        }
+
+        .body-text {
+            font-size: 1.2em;
+            line-height: 1.5;
+            color: white;
+            animation: wiggle 0.5s infinite alternate;
+        }
+
+        @keyframes wiggle {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(2deg); }
+        }
+
+        form {
+            border: 2px solid black;
+            padding: 20px;
+            background-color: rgba(255, 255, 0, 0.5);
+            animation: rainbow-border 10s infinite alternate;
+        }
+
+        @keyframes rainbow-border {
+            0% { border-color: red; }
+            20% { border-color: orange; }
+            40% { border-color: yellow; }
+            60% { border-color: green; }
+            80% { border-color: blue; }
+            100% { border-color: purple; }
+        }
+
+        label {
+            color: blue;
+            font-weight: bold;
+            animation: shake 0.5s infinite alternate;
+        }
+
+        input[type="text"],
+        textarea {
+            background-color: cyan;
+            border: 2px solid red;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background-color: magenta;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            animation: shake 0.5s infinite alternate;
+        }
+
+        footer {
+            background-color: purple;
+            color: yellow;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .credits {
+            font-style: italic;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1 class="main-header">Welcome to Viacheslav's Super-Duper Chaotic Homepage</h1>
+    </header>
+
+    <main>
+        <section>
+            <h2 class="section-header">Fascinating Chaos Awaits!</h2>
+            <p class="body-text">
+                Welcome to my homepage! Here, chaos reigns supreme. Embrace the madness and enjoy the unpredictable journey ahead!
+            </p>
+        </section>
+
+        <section>
+            <h2 class="section-header">Send me a message... If You Dare!</h2>
+            <form action="/message" method="post">
+                <label for="nameinput">Your Name (optional):</label><br>
+                <input id="nameinput" type="text" name="PersonName"><br><br>
+
+                <label for="messagebox">Your Chaotic Message:</label><br>
+                <textarea id="messagebox" name="MessageContent" rows="4" cols="50" required></textarea><br><br>
+                <button type="submit">Summon Chaos!</button>
+            </form>
+        </section>
+
+        <section>
+            <h2 class="section-header">Venture Further into the Chaos...</h2>
+            <p class="body-text">
+                Beneath the surface lies a labyrinth of unpredictable paths. Choose your next move wisely!
+            </p>
+        </section>
+
+        <section>
+            <h2 class="section-header">Behold the Chaos!</h2>
+            <p class="body-text">
+                Witness the ever-changing landscape of chaos and marvel at its infinite possibilities.
+            </p>
+        </section>
+    </main>
+
+    <footer>
+        <p class="credits">&copy; 2022 Viacheslav's Super-Duper Chaotic Homepage. Chaos by design.</p>
+    </footer>
+</body>
+</html>

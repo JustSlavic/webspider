@@ -5,6 +5,11 @@ GET = [
         content_type = "text/html"
     }
     {
+        url = "/chaos"
+        serve_file = "chaotic2_index.html"
+        content_type = "text/html"
+    }
+    {
         url = "/android-chrome-192x192.png"
         serve_file = "images/favicons/android-chrome-192x192.png"
         content_type = "image/png"
