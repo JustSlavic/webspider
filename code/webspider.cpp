@@ -293,42 +293,34 @@ int main()
                             if (reg_result == async::REG_FAILED)
                             {
                                 LOG("Error: could not register connection to async queue (errno: %d - \"%s\")", errno, strerror(errno));
-                                LOG("close(%d)", connection.fd);
-                                connection.close();
                             }
                             else if (reg_result == async::REG_NO_SLOTS)
                             {
                                 LOG("Error couldn't add to the async queue because all %d slots in the array are occupied", ASYNC_MAX_CONNECTIONS);
-                                LOG("close(%d)", connection.fd);
-                                connection.close();
                             }
                             else
                             {
                                 LOG("Added to async queue");
+                                continue;
                             }
                         }
-                        else // if (res == CLOSE_CONNECTION)
-                        {
-                            LOG("Deallocating memory back to webspider allocator");
-                            server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
-                            LOG("close(%d)", connection.fd);
-                            connection.close();
-                        }
+                        LOG("Deallocating memory back to webspider allocator");
+                        server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
+                        LOG("close(%d)", connection.fd);
+                        connection.close();
                     }
                     else if (event->is(async::EVENT__CONNECTION))
                     {
                         auto res = process_connection(&ctx, &server, event->connection);
-                        if (res == CLOSE_CONNECTION)
-                        {
-                            LOG("Deallocating memory back to webspider allocator");
-                            server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
-                            LOG("unregister connection(%d)", event->connection.fd);
-                            server.async.unregister(event);
-                        }
-                        else // if (res == KEEP_CONNECTION)
+                        if (res == KEEP_CONNECTION)
                         {
                             LOG("Processed new data on the connection, but it is not done yet, wait more");
+                            continue;
                         }
+                        LOG("Deallocating memory back to webspider allocator");
+                        server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
+                        LOG("unregister connection(%d)", event->connection.fd);
+                        server.async.unregister(event);
                     }
                 }
                 else if (event->is(async::EVENT__UNIX_DOMAIN))
