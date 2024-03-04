@@ -15,7 +15,7 @@ struct async_impl
 async async::create_context()
 {
     async result;
-    result.impl = mallocator().allocate<async_impl>();
+    result.impl = mallocator()->allocate<async_impl>();
     if (result.impl)
     {
         result.impl->queue_fd = epoll_create1(0);
@@ -31,7 +31,7 @@ bool32 async::is_valid()
 void async::destroy_context()
 {
     close(impl->queue_fd);
-    mallocator().deallocate(impl, sizeof(async_impl));
+    mallocator()->deallocate(impl, sizeof(async_impl));
 }
 
 async::register_result async::register_listener(web::listener listener, int event_type)
@@ -117,7 +117,7 @@ int async::unregister(async::event *e)
     {
         e->listener.close();
     }
-    memory__set(e, 0, sizeof(async::event));
+    memset(e, 0, sizeof(async::event));
     return 0;
 }
 
@@ -173,7 +173,7 @@ async::prune_result async::prune(uint64 microseconds)
                 result.pruned_count += 1;
 
                 close(event->connection.fd);
-                memory__set(event, 0, sizeof(event));
+                memset(event, 0, sizeof(event));
             }
         }
     }
@@ -184,8 +184,8 @@ async::prune_result async::prune(uint64 microseconds)
 async::report_result async::report()
 {
     report_result report;
-    memory__copy(report.listeners, impl->registered_listeners, sizeof(impl->registered_listeners));
-    memory__copy(report.connections, impl->registered_connections, sizeof(impl->registered_connections));
+    memcpy(report.listeners, impl->registered_listeners, sizeof(impl->registered_listeners));
+    memcpy(report.connections, impl->registered_connections, sizeof(impl->registered_connections));
 
     return report;
 }

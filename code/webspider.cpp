@@ -121,12 +121,14 @@ int main()
 {
     signal(SIGINT, signal__SIGINT);
 
+    auto webspider_memory_usage = MEGABYTES(20);
     auto string_id_arena_size = MEGABYTES(1);
-    auto string_id_arena = mallocator().allocate_arena(string_id_arena_size);
-    string_id::initialize(string_id_arena);
 
-    auto global_arena_size = MEGABYTES(10);
-    auto global_arena = mallocator().allocate_arena(global_arena_size);
+    webspider server;
+    server.arena = mallocator()->allocate_arena(webspider_memory_usage);
+
+    auto string_id_arena = server.arena.allocate_arena(string_id_arena_size);
+    string_id::initialize(string_id_arena);
 
     context ctx;
     {
@@ -134,16 +136,13 @@ int main()
         ctx.config = config::load(mallocator(), config_data);
     }
 
-    webspider server;
     server.async = {};
-    server.webspider_allocator = global_arena;
-    server.connection_pool_allocator = global_arena.allocate_pool(ctx.config.memory_usage, ctx.config.memory_usage_per_connection);
+    server.pool  = server.arena.allocate_pool(ctx.config.memory_usage, ctx.config.memory_usage_per_connection);
     server.route_table__count = 0;
 
-
     {
-        auto mapping_data = load_file(server.webspider_allocator, "mapping.acf");
-        auto mapping = acf::parse(server.webspider_allocator, mapping_data);
+        auto mapping_data = load_file(&server.arena, "mapping.acf");
+        auto mapping = acf::parse(&server.arena, mapping_data);
 
         auto get_map = mapping.get_value("GET");
         for (auto v : get_map.values())
@@ -165,7 +164,7 @@ int main()
         }
     }
 
-    auto logger_buffer = server.webspider_allocator.allocate_buffer(MEGABYTES(1));
+    auto logger_buffer = server.arena.allocate_buffer(MEGABYTES(1));
     struct logger logger_ = {};
     logger_.sb = string_builder::from(logger_buffer);
     if (ctx.config.logger.stream)
@@ -238,7 +237,7 @@ int main()
             server.webspider_listener.listen(ctx.config.backlog_size);
 
             LOG("Successfully started webspider version %s", version);
-            LOG("Memory usage: %4.2fMb", MEGABYTES_FROM_BYTES(string_id_arena_size + global_arena_size));
+            LOG("Memory usage: %4.2fMb", MEGABYTES_FROM_BYTES(webspider_memory_usage));
             LOG("-------------- WELCOME --------------");
 
             running = true;
@@ -263,7 +262,7 @@ int main()
                     {
                         if (prune_result.mem[i].data == NULL) continue;
                         LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(prune_result.mem[i].size));
-                        server.connection_pool_allocator.deallocate(prune_result.mem[i]);
+                        server.pool.deallocate(prune_result.mem[i]);
                     }
 
                     char buffer[1024] = {};
@@ -289,7 +288,7 @@ int main()
                         web::connection connection = event->listener.accept();
                         LOG("Accepted connection: (fd: %d)", connection.fd);
                         connection.buffer = memory_bucket::from(
-                            server.connection_pool_allocator.allocate_buffer(KILOBYTES(5)));
+                            server.pool.allocate_buffer(KILOBYTES(5)));
                         LOG("Allocated %4.2fKb from webspider allocator", KILOBYTES_FROM_BYTES(connection.buffer.size));
 
                         auto res = process_connection(&ctx, &server, connection);
@@ -312,7 +311,7 @@ int main()
                             }
                         }
                         LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(connection.buffer.size));
-                        server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
+                        server.pool.deallocate(connection.buffer.get_buffer());
                         LOG("close(%d)", connection.fd);
                         connection.close();
                     }
@@ -325,7 +324,7 @@ int main()
                             continue;
                         }
                         LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(event->connection.buffer.size));
-                        server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
+                        server.pool.deallocate(event->connection.buffer.get_buffer());
                         LOG("unregister connection(%d)", event->connection.fd);
                         server.async.unregister(event);
                     }
@@ -348,7 +347,7 @@ int main()
                         {
                             LOG("Could not send report to Unix Domain Socket (errno: %d - \"%s\")", errno, strerror(errno));
                         }
-                        mallocator().deallocate(report.data, report.size);
+                        mallocator()->deallocate(report.data, report.size);
                     }
                     else if (event->is(async::EVENT__CONNECTION))
                     {
@@ -533,7 +532,7 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
             int fd = open("messages.txt", O_WRONLY | O_APPEND | O_CREAT, 0644);
             if (fd < 0) LOG("COULD NOT OPEN FILE (errno: %d - \"%s\")", errno, strerror(errno));
 
-            auto decoded = server->connection_pool_allocator.allocate_buffer(KILOBYTES(4));
+            auto decoded = server->pool.allocate_buffer(KILOBYTES(4));
             int decoded_size = web::url_decode(memory_buffer::from((void *) connection.request.body.data, connection.request.body.size), decoded);
 
             auto written = write(fd, decoded.data, decoded_size);
@@ -542,7 +541,7 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
             else LOG("Written %lld bytes to \"message.txt\"", written);
             serve_static_file(ctx, server, connection, "redirect.html", "text/html");
 
-            server->connection_pool_allocator.deallocate(decoded);
+            server->pool.deallocate(decoded);
         }
     }
     else
@@ -603,9 +602,9 @@ memory_bucket prepare_report(webspider *server)
     char spaces[]  = "                                        ";
     char squares[] = "########################################";
 
-    auto report1 = server->webspider_allocator.get_report();
+    auto report1 = server->arena.get_report();
     int n_spaces1 = truncate_to_int32(40.0f * report1.used / report1.size);
-    auto report2 = server->connection_pool_allocator.get_report();
+    auto report2 = server->pool.get_report();
     int n_spaces2 = truncate_to_int32(40.0f * report2.used / report2.size);
 
     auto report = server->async.report();
@@ -614,7 +613,7 @@ memory_bucket prepare_report(webspider *server)
     gettimeofday(&tv, NULL);
     uint64 now = 1000000LLU * tv.tv_sec + tv.tv_usec;
 
-    auto buffer = mallocator().allocate_buffer(KILOBYTES(3));
+    auto buffer = mallocator()->allocate_buffer(KILOBYTES(3));
     auto sb = memory_bucket::from(buffer);
 
     sb.append("           Webspider v%s\n", version);

@@ -16,7 +16,7 @@ struct async_impl
 async async::create_context()
 {
     async result;
-    result.impl = mallocator().allocate<async_impl>();
+    result.impl = mallocator()->allocate<async_impl>();
     if (result.impl)
     {
         result.impl->queue_fd = kqueue();
@@ -32,7 +32,7 @@ bool32 async::is_valid()
 void async::destroy_context()
 {
     close(impl->queue_fd);
-    mallocator().deallocate(impl, sizeof(async_impl));
+    mallocator()->deallocate(impl, sizeof(async_impl));
 }
 
 async::register_result async::register_listener(web::listener listener, int event_type)

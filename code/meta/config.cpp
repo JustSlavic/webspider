@@ -81,7 +81,7 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
     }
     if (name_count == 1)
     {
-        fprintf(h_file, "    static config load(memory_allocator, memory_buffer);\n};\n");
+        fprintf(h_file, "    static config load(memory_allocator *, memory_buffer);\n};\n");
     }
     else
     {
@@ -92,15 +92,15 @@ void output_object(FILE *h_file, FILE *c_file, acf obj, string_id *names, uint32
 int main()
 {
     {
-        auto string_id_arena = mallocator().allocate_arena(MEGABYTES(1));
+        auto string_id_arena = mallocator()->allocate_arena(MEGABYTES(1));
         string_id::initialize(string_id_arena);
     }
 
-    memory_allocator arena = mallocator().allocate_arena(MEGABYTES(10));
+    memory_allocator arena = mallocator()->allocate_arena(MEGABYTES(10));
 
-    memory_buffer source = load_file(arena, "../www/config.acf");
+    memory_buffer source = load_file(&arena, "../www/config.acf");
 
-    acf cfg = acf::parse(arena, source);
+    acf cfg = acf::parse(&arena, source);
 
     FILE *h_file = fopen("gen/config.hpp", "w");
     FILE *c_file = fopen("gen/config.cpp", "w");
@@ -113,7 +113,7 @@ int main()
 
     fprintf(c_file, "#include \"config.hpp\"\n"
                     "\n"
-                    "config config::load(memory_allocator a, memory_buffer content)\n"
+                    "config config::load(memory_allocator *a, memory_buffer content)\n"
                     "{\n"
                     "    config result;\n"
                     "    acf cfg = acf::parse(a, content);\n");

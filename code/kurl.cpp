@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        payload = mallocator().allocate_buffer(KILOBYTES(1));
+        payload = mallocator()->allocate_buffer(KILOBYTES(1));
 
         auto sb = string_builder::from(payload);
         sb.append("GET / HTTP/1.1\n"
