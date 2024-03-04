@@ -170,7 +170,7 @@ web::listener web::listener::unix(string_view filename)
         struct sockaddr_un name = {
             .sun_family = AF_UNIX
         };
-        memory__copy(name.sun_path, filename.data, filename.size);
+        memcpy(name.sun_path, filename.data, filename.size);
 
         int ec = bind(result.fd, (struct sockaddr const *) &name, sizeof(name));
         if (ec < 0)

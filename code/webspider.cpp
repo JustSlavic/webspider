@@ -363,7 +363,7 @@ int main()
 
     {
         char uds_name_cstr[512] = {};
-        memory__copy(uds_name_cstr, ctx.config.unix_domain_socket.data, ctx.config.unix_domain_socket.size);
+        memcpy(uds_name_cstr, ctx.config.unix_domain_socket.data, ctx.config.unix_domain_socket.size);
         unlink(uds_name_cstr);
     }
     if (server.inspector_listener.good())
@@ -480,7 +480,7 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
                         auto content_type = server->route_table__vals[path_index].content_type;
 
                         char filename_buffer[512] = {};
-                        memory__copy(filename_buffer, filename.data, filename.size);
+                        memcpy(filename_buffer, filename.data, filename.size);
 
                         auto f = file::open(filename_buffer);
 

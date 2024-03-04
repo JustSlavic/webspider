@@ -110,7 +110,7 @@ int main(int argc, char **argv)
         {
             if (p->ai_family == AF_INET)
             {
-                memory__copy(&address, p->ai_addr, sizeof(struct sockaddr_in));
+                memcpy(&address, p->ai_addr, sizeof(struct sockaddr_in));
                 break;
             }
         }

@@ -113,7 +113,7 @@ int async::unregister(event *e)
     {
         e->listener.close();
     }
-    memory__set(e, 0, sizeof(async::event));
+    memset(e, 0, sizeof(async::event));
     return 0;
 }
 
@@ -165,7 +165,7 @@ async::prune_result async::prune(uint64 microseconds)
                 result.pruned_count += 1;
 
                 close(c->fd);
-                memory__set(event, 0, sizeof(async::event));
+                memset(event, 0, sizeof(async::event));
             }
         }
     }
@@ -176,8 +176,8 @@ async::prune_result async::prune(uint64 microseconds)
 async::report_result async::report()
 {
     report_result report;
-    memory__copy(report.listeners, impl->registered_listeners, sizeof(impl->registered_listeners));
-    memory__copy(report.connections, impl->registered_connections, sizeof(impl->registered_connections));
+    memcpy(report.listeners, impl->registered_listeners, sizeof(impl->registered_listeners));
+    memcpy(report.connections, impl->registered_connections, sizeof(impl->registered_connections));
 
     return report;
 }
