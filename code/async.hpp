@@ -67,6 +67,7 @@ struct async
     {
         int pruned_count;
         int fds[ASYNC_MAX_CONNECTIONS];
+        memory_buffer mem[ASYNC_MAX_CONNECTIONS];
     };
 
     struct report_result

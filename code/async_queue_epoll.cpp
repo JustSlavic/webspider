@@ -168,7 +168,9 @@ async::prune_result async::prune(uint64 microseconds)
             uint64 dt = now - event->update_time;
             if (dt > microseconds)
             {
-                result.fds[result.pruned_count++] = event->connection.fd;
+                result.fds[result.pruned_count] = event->connection.fd;
+                result.mem[result.pruned_count] = event->connection.buffer.get_buffer();
+                result.pruned_count += 1;
 
                 close(event->connection.fd);
                 memory__set(event, 0, sizeof(event));

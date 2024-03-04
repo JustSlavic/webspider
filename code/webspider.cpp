@@ -259,6 +259,13 @@ int main()
                 auto prune_result = server.async.prune(ctx.config.prune_timeout * 10); // timeout in microseconds
                 if (prune_result.pruned_count > 0)
                 {
+                    for (int i = 0; i < prune_result.pruned_count; i++)
+                    {
+                        if (prune_result.mem[i].data == NULL) continue;
+                        LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(prune_result.mem[i].size));
+                        server.connection_pool_allocator.deallocate(prune_result.mem[i]);
+                    }
+
                     char buffer[1024] = {};
                     {
                         auto bucket = memory_bucket::from(buffer, 1024);
@@ -304,7 +311,7 @@ int main()
                                 continue;
                             }
                         }
-                        LOG("Deallocating memory back to webspider allocator");
+                        LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(connection.buffer.size));
                         server.connection_pool_allocator.deallocate(connection.buffer.get_buffer());
                         LOG("close(%d)", connection.fd);
                         connection.close();
@@ -317,7 +324,7 @@ int main()
                             LOG("Processed new data on the connection, but it is not done yet, wait more");
                             continue;
                         }
-                        LOG("Deallocating memory back to webspider allocator");
+                        LOG("Deallocating %4.2fKb of memory back to pool allocator", KILOBYTES_FROM_BYTES(event->connection.buffer.size));
                         server.connection_pool_allocator.deallocate(event->connection.buffer.get_buffer());
                         LOG("unregister connection(%d)", event->connection.fd);
                         server.async.unregister(event);

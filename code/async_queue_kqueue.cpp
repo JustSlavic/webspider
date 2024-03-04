@@ -155,12 +155,16 @@ async::prune_result async::prune(uint64 microseconds)
         async::event *event = impl->registered_connections + i;
         if (event->is(async::EVENT__CONNECTION))
         {
+            auto *c = &event->connection;
+
             uint64 dt = now - event->update_time;
             if (dt > microseconds)
             {
-                result.fds[result.pruned_count++] = event->connection.fd;
+                result.fds[result.pruned_count] = c->fd;
+                result.mem[result.pruned_count] = c->buffer.get_buffer();
+                result.pruned_count += 1;
 
-                close(event->connection.fd);
+                close(c->fd);
                 memory__set(event, 0, sizeof(async::event));
             }
         }
