@@ -173,7 +173,7 @@ async::prune_result async::prune(uint64 microseconds)
                 result.pruned_count += 1;
 
                 close(event->connection.fd);
-                memset(event, 0, sizeof(event));
+                memset(event, 0, sizeof(async::event));
             }
         }
     }
