@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <lexer.hpp>
 #include <acf.hpp>
+#include <platform.hpp>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -98,7 +99,7 @@ int main()
 
     memory_allocator arena = mallocator()->allocate_arena(MEGABYTES(10));
 
-    memory_buffer source = load_file(&arena, "../www/config.acf");
+    memory_buffer source = platform::load_file("../www/config.acf", &arena);
 
     acf cfg = acf::parse(&arena, source);
 
@@ -133,9 +134,10 @@ int main()
 }
 
 
-#include <memory_allocator.cpp>
+#include <memory/allocator.cpp>
 #include <string_id.cpp>
 #include <lexer.cpp>
 #include <acf.cpp>
 #include <util.cpp>
 #include <memory_bucket.cpp>
+#include <os/platform_posix.cpp>

@@ -1,16 +1,17 @@
 // Based
 #include <base.h>
-#include <integer.h>
-#include <memory.h>
-#include <memory_allocator.hpp>
+#include <math/integer.h>
+#include <memory/memory.hpp>
+#include <memory/allocator.hpp>
 #include <string_builder.hpp>
-#include <float32.h>
+#include <math/float32.h>
 #include <logger.hpp>
 #include <string_id.hpp>
 #include <acf.hpp>
 #include <util.hpp>
 #include <fs.hpp>
 #include <web.hpp>
+#include <platform.hpp>
 
 // *nix
 #include <unistd.h>
@@ -132,7 +133,7 @@ int main()
 
     context ctx;
     {
-        auto config_data = load_file(mallocator(), "config.acf");
+        auto config_data = platform::load_file("config.acf", mallocator());
         ctx.config = config::load(mallocator(), config_data);
     }
 
@@ -141,7 +142,7 @@ int main()
     server.route_table__count = 0;
 
     {
-        auto mapping_data = load_file(&server.arena, "mapping.acf");
+        auto mapping_data = platform::load_file("mapping.acf", &server.arena);
         auto mapping = acf::parse(&server.arena, mapping_data);
 
         auto get_map = mapping.get_value("GET");
@@ -694,7 +695,7 @@ memory_bucket prepare_report(webspider *server)
 
 
 
-#include <memory_allocator.cpp>
+#include <memory/allocator.cpp>
 #include <string_builder.cpp>
 #include <string_id.cpp>
 #include <logger.cpp>
@@ -702,6 +703,7 @@ memory_bucket prepare_report(webspider *server)
 #include <util.cpp>
 #include <fs.cpp>
 #include <web.cpp>
+#include <os/platform_posix.cpp>
 
 #include "http.cpp"
 #include "gen/version.c"

@@ -1,10 +1,11 @@
 #include <base.h>
-#include <integer.h>
-#include <memory.h>
+#include <math/integer.h>
+#include <memory/memory.hpp>
 #include <string_view.hpp>
 #include <string_builder.hpp>
-#include <memory_allocator.hpp>
+#include <memory/allocator.hpp>
 #include <util.hpp>
+#include <platform.hpp>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,7 +83,7 @@ int main(int argc, char **argv)
     memory_buffer payload = {};
     if (args.filename)
     {
-        payload = load_file(mallocator(), args.filename);
+        payload = platform::load_file(args.filename, mallocator());
     }
     else
     {
@@ -156,7 +157,8 @@ int main(int argc, char **argv)
 }
 
 
-#include <memory_allocator.cpp>
+#include <memory/allocator.cpp>
 #include <string_builder.cpp>
 #include <util.cpp>
 #include <memory_bucket.cpp>
+#include <os/platform_posix.cpp>

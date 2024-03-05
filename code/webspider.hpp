@@ -45,8 +45,6 @@ struct webspider
     response_type route_table__type[64];
     response_data route_table__vals[64];
     uint32        route_table__count;
-
-    // array(uint32) ip_ban_list;
 };
 
 
