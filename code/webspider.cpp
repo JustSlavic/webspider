@@ -479,6 +479,10 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
                         auto filename = server->route_table__vals[path_index].filename;
                         auto content_type = server->route_table__vals[path_index].content_type;
 
+                        LOG("Found corresponding to request static file (\"%.*s\", \"%.*s\"",
+                            filename.size, filename.data,
+                            content_type.size, content_type.data);
+
                         char filename_buffer[512] = {};
                         memcpy(filename_buffer, filename.data, filename.size);
 
@@ -495,6 +499,7 @@ void respond_to_requst(context *ctx, webspider *server, web::connection &connect
                         ok = true;
 
                         f.close();
+                        LOG("Prepared static file response");
                     }
                     break;
                 }
